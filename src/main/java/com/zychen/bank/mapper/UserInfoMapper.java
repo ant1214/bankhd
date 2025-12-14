@@ -17,4 +17,8 @@ public interface UserInfoMapper {
     // 根据身份证号查询
     @Select("SELECT * FROM user_info WHERE id_number = #{idNumber}")
     UserInfo findByIdNumber(@Param("idNumber") String idNumber);
+
+    // 根据用户ID查询用户信息
+    @Select("SELECT * FROM user_info WHERE user_id = #{userId}")
+    UserInfo findByUserId(@Param("userId") String userId);
 }

@@ -4,6 +4,7 @@ import com.zychen.bank.dto.LoginDTO;
 import com.zychen.bank.dto.RegisterDTO;
 import com.zychen.bank.model.User;
 import com.zychen.bank.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -70,15 +71,12 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginDTO loginDTO) {
         try {
-            String userId = userService.login(loginDTO);
+            Map<String, Object> loginResult = userService.login(loginDTO);
 
             Map<String, Object> response = new HashMap<>();
             response.put("code", 200);
             response.put("message", "登录成功");
-            response.put("data", Map.of(
-                    "userId", userId,
-                    "token", "暂未实现JWT"  // 稍后我们会实现JWT
-            ));
+            response.put("data", loginResult);
 
             return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
@@ -86,16 +84,13 @@ public class AuthController {
             error.put("code", 400);
             error.put("message", e.getMessage());
             error.put("data", null);
-
             return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
             log.error("登录失败", e);
-
             Map<String, Object> error = new HashMap<>();
             error.put("code", 500);
             error.put("message", "系统内部错误");
             error.put("data", null);
-
             return ResponseEntity.internalServerError().body(error);
         }
     }
@@ -108,6 +103,26 @@ public class AuthController {
         Map<String, String> response = new HashMap<>();
         response.put("status", "ok");
         response.put("service", "bank-system-auth");
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 测试token验证的接口
+     */
+    @GetMapping("/test-token")
+    public ResponseEntity<Map<String, Object>> testToken(HttpServletRequest request) {
+        String userId = (String) request.getAttribute("userId");
+        Integer role = (Integer) request.getAttribute("role");
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("code", 200);
+        response.put("message", "Token验证成功");
+        response.put("data", Map.of(
+                "userId", userId,
+                "role", role,
+                "message", "您的token有效"
+        ));
+
         return ResponseEntity.ok(response);
     }
 }

@@ -1,8 +1,11 @@
 package com.zychen.bank.service;
 
+import com.zychen.bank.dto.ChangePasswordDTO;
 import com.zychen.bank.dto.LoginDTO;
 import com.zychen.bank.dto.RegisterDTO;
 import com.zychen.bank.model.User;
+
+import java.util.Map;
 
 public interface UserService {
 
@@ -10,7 +13,7 @@ public interface UserService {
     User register(RegisterDTO registerDTO);
 
     // 用户登录
-    String login(LoginDTO loginDTO);
+    Map<String, Object> login(LoginDTO loginDTO);
 
     // 根据账号（用户名或手机号）查找用户
     User findByAccount(String account);
@@ -23,4 +26,12 @@ public interface UserService {
 
     // 检查身份证号是否已存在
     boolean isIdNumberExists(String idNumber);
+
+    User findByUserId(String userId);
+
+    // 获取用户完整信息（包括user_info）
+    Map<String, Object> getUserFullInfo(String userId);
+
+    // 修改密码
+    void changePassword(String userId, ChangePasswordDTO changePasswordDTO);
 }

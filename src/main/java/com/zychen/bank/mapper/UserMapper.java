@@ -29,4 +29,9 @@ public interface UserMapper {
     // 更新最后登录时间
     @Update("UPDATE user SET last_login_time = #{lastLoginTime} WHERE user_id = #{userId}")
     int updateLastLoginTime(@Param("userId") String userId, @Param("lastLoginTime") LocalDateTime lastLoginTime);
+
+    // 更新密码
+    @Update("UPDATE user SET password = #{password} WHERE user_id = #{userId}")
+    int updatePassword(@Param("userId") String userId, @Param("password") String password);
+
 }
