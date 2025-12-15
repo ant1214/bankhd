@@ -1,6 +1,7 @@
 package com.zychen.bank.controller;
 
 import com.zychen.bank.dto.DepositDTO;
+import com.zychen.bank.dto.TransactionQueryDTO;
 import com.zychen.bank.dto.WithdrawDTO;
 import com.zychen.bank.service.TransactionService;
 import lombok.extern.slf4j.Slf4j;
@@ -92,6 +93,38 @@ public class TransactionController {
             return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
             log.error("取款异常", e);
+
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            error.put("data", null);
+
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+
+    /**
+     * 查询交易记录
+     */
+    @GetMapping
+    public ResponseEntity<Map<String, Object>> getTransactions(
+            @ModelAttribute TransactionQueryDTO queryDTO,
+            HttpServletRequest request) {
+        try {
+            String userId = (String) request.getAttribute("userId");
+
+            Map<String, Object> result = transactionService.getTransactions(userId, queryDTO);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "查询成功");
+            response.put("data", result);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("查询交易记录异常", e);
 
             Map<String, Object> error = new HashMap<>();
             error.put("code", 500);

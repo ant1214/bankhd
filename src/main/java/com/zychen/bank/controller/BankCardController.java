@@ -1,13 +1,14 @@
 package com.zychen.bank.controller;
 
 import com.zychen.bank.dto.BindCardDTO;
+import com.zychen.bank.mapper.BankCardMapper;
 import com.zychen.bank.model.BankCard;
 import com.zychen.bank.service.BankCardService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import com.zychen.bank.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
@@ -19,10 +20,13 @@ import java.util.Map;
 @RestController
 @RequestMapping("/cards")
 public class BankCardController {
+    @Autowired
+    private JwtUtil jwtUtil;
 
     @Autowired
     private BankCardService bankCardService;
-
+    @Autowired
+    private BankCardMapper bankCardMapper;
     /**
      * 绑定银行卡
      */
@@ -183,4 +187,55 @@ public class BankCardController {
             default: return "未知";
         }
     }
+
+
+    // BankCardController.java - 余额查询接口
+    @GetMapping("/{cardId}/balance")
+    public ResponseEntity<?> getCardBalance(
+            @PathVariable String cardId,
+            HttpServletRequest request) {
+        try {
+            String token = request.getHeader("Authorization").substring(7);
+            String userId = jwtUtil.getUserIdFromToken(token);
+
+            BankCard bankCard = bankCardMapper.findByCardId(cardId);
+            if (bankCard == null) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("code", 400);
+                errorResponse.put("message", "银行卡不存在");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+
+            if (!bankCard.getUserId().equals(userId)) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("code", 400);
+                errorResponse.put("message", "无权查询此银行卡");
+                return ResponseEntity.badRequest().body(errorResponse);
+            }
+
+            Map<String, Object> balanceInfo = new HashMap<>();
+            balanceInfo.put("cardId", bankCard.getCardId());
+            balanceInfo.put("balance", bankCard.getBalance());
+            balanceInfo.put("availableBalance", bankCard.getAvailableBalance());
+            balanceInfo.put("frozenAmount", bankCard.getFrozenAmount());
+            balanceInfo.put("status", bankCard.getStatus());
+            balanceInfo.put("statusText", getStatusText(bankCard.getStatus()));
+            balanceInfo.put("lastTransactionTime", bankCard.getLastTransactionTime());
+
+            Map<String, Object> successResponse = new HashMap<>();
+            successResponse.put("code", 200);
+            successResponse.put("message", "查询成功");
+            successResponse.put("data", balanceInfo);
+
+            return ResponseEntity.ok(successResponse);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("code", 400);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+
+
 }

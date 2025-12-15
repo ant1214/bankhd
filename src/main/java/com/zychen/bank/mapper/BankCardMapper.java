@@ -37,4 +37,5 @@ public interface BankCardMapper {
                       @Param("balance") BigDecimal balance,
                       @Param("availableBalance") BigDecimal availableBalance,
                       @Param("lastTransactionTime") LocalDateTime lastTransactionTime);
+
 }

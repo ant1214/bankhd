@@ -1,6 +1,7 @@
 package com.zychen.bank.service;
 
 import com.zychen.bank.dto.DepositDTO;
+import com.zychen.bank.dto.TransactionQueryDTO;
 import com.zychen.bank.dto.WithdrawDTO;
 import com.zychen.bank.mapper.BankCardMapper;
 import com.zychen.bank.mapper.TransactionMapper;
@@ -17,7 +18,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -206,5 +209,101 @@ public class TransactionServiceImpl implements TransactionService {
                 userId, withdrawDTO.getCardId(), withdrawDTO.getAmount(), transaction.getTransNo());
 
         return result;
+    }
+
+    @Override
+    public Map<String, Object> getTransactions(String userId, TransactionQueryDTO queryDTO) {
+        // 1. 验证分页参数
+        if (queryDTO.getPage() == null || queryDTO.getPage() < 1) {
+            queryDTO.setPage(1);
+        }
+        if (queryDTO.getPageSize() == null || queryDTO.getPageSize() < 1 || queryDTO.getPageSize() > 100) {
+            queryDTO.setPageSize(20);
+        }
+
+        // 2. 计算分页偏移量
+        int offset = (queryDTO.getPage() - 1) * queryDTO.getPageSize();
+
+        // 3. 查询数据
+        List<Transaction> transactions = transactionMapper.findByConditions(
+                userId,
+                queryDTO.getCardId(),
+                queryDTO.getTransType(),
+                queryDTO.getStartDate(),
+                queryDTO.getEndDate(),
+                offset,
+                queryDTO.getPageSize()
+        );
+
+        // 4. 查询总数
+        int total = transactionMapper.countByConditions(
+                userId,
+                queryDTO.getCardId(),
+                queryDTO.getTransType(),
+                queryDTO.getStartDate(),
+                queryDTO.getEndDate()
+        );
+
+        // 5. 处理返回数据
+        List<Map<String, Object>> transactionList = transactions.stream()
+                .map(tx -> {
+                    Map<String, Object> txInfo = new HashMap<>();
+                    txInfo.put("transNo", tx.getTransNo());
+                    txInfo.put("cardId", maskCardId(tx.getCardId()));  // 卡号脱敏
+                    txInfo.put("transType", getTransTypeText(tx.getTransType()));
+                    txInfo.put("transSubtype", tx.getTransSubtype());
+                    txInfo.put("amount", tx.getAmount());
+                    txInfo.put("balanceBefore", tx.getBalanceBefore());
+                    txInfo.put("balanceAfter", tx.getBalanceAfter());
+                    txInfo.put("fee", tx.getFee());
+                    txInfo.put("remark", tx.getRemark());
+                    txInfo.put("transTime", tx.getTransTime());
+                    txInfo.put("status", getStatusText(tx.getStatus()));
+                    return txInfo;
+                })
+                .collect(Collectors.toList());
+
+        // 6. 构建分页信息
+        int totalPages = (int) Math.ceil((double) total / queryDTO.getPageSize());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("transactions", transactionList);
+        result.put("pagination", Map.of(
+                "page", queryDTO.getPage(),
+                "pageSize", queryDTO.getPageSize(),
+                "total", total,
+                "totalPages", totalPages
+        ));
+
+        return result;
+    }
+
+    // 银行卡号脱敏
+    private String maskCardId(String cardId) {
+        if (cardId == null || cardId.length() != 12) {
+            return cardId;
+        }
+        return cardId.substring(0, 6) + "******" + cardId.substring(10);
+    }
+
+    // 交易类型转文本
+    private String getTransTypeText(String transType) {
+        switch (transType) {
+            case "DEPOSIT": return "存款";
+            case "WITHDRAW": return "取款";
+            case "TRANSFER": return "转账";
+            case "INTEREST": return "利息";
+            default: return transType;
+        }
+    }
+
+    // 状态转文本
+    private String getStatusText(Integer status) {
+        switch (status) {
+            case 0: return "失败";
+            case 1: return "成功";
+            case 2: return "处理中";
+            default: return "未知";
+        }
     }
 }

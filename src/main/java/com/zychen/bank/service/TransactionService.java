@@ -1,6 +1,7 @@
 package com.zychen.bank.service;
 
 import com.zychen.bank.dto.DepositDTO;
+import com.zychen.bank.dto.TransactionQueryDTO;
 import com.zychen.bank.dto.WithdrawDTO;
 
 import java.math.BigDecimal;
@@ -16,4 +17,7 @@ public interface TransactionService {
 
     // 取款
     Map<String, Object> withdraw(String userId, WithdrawDTO withdrawDTO);
+
+    // 查询交易记录
+    Map<String, Object> getTransactions(String userId, TransactionQueryDTO queryDTO);
 }
