@@ -34,4 +34,12 @@ public interface UserMapper {
     @Update("UPDATE user SET password = #{password} WHERE user_id = #{userId}")
     int updatePassword(@Param("userId") String userId, @Param("password") String password);
 
+    @Select("SELECT MAX(user_id) FROM user WHERE user_id LIKE #{prefix}")
+    String findMaxUserId(@Param("prefix") String prefix);
+
+    // 更新手机号
+    @Update("UPDATE user SET phone = #{phone} WHERE user_id = #{userId}")
+    int updatePhone(@Param("userId") String userId, @Param("phone") String phone);
+
+
 }

@@ -15,7 +15,7 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import com.zychen.bank.dto.UnbindCardDTO;
 @Slf4j
 @RestController
 @RequestMapping("/cards")
@@ -237,5 +237,37 @@ public class BankCardController {
     }
 
 
+    /**
+     * 解绑银行卡
+     */
+    @PostMapping("/{cardId}/unbind")
+    public ResponseEntity<?> unbindCard(
+            @PathVariable String cardId,
+            @Valid @RequestBody UnbindCardDTO dto,
+            HttpServletRequest request) {
+        try {
+            String token = request.getHeader("Authorization").substring(7);
+            String userId = jwtUtil.getUserIdFromToken(token);
+
+            // 验证路径参数和body中的cardId一致
+            if (!cardId.equals(dto.getCardId())) {
+                throw new RuntimeException("卡号不一致");
+            }
+
+            Map<String, Object> result = bankCardService.unbindCard(dto, userId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "银行卡解绑成功");
+            response.put("data", result);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("code", 400);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
 
 }

@@ -19,7 +19,7 @@ public interface FixedDepositMapper {
     int insert(FixedDeposit fixedDeposit);
 
     // 根据用户ID查询 - 使用字段别名映射
-    @Select("SELECT fd_id as fdId, card_id as cardId, user_id as userId, " +
+    @Select("SELECT fd_id as fdId, fd_no as fdNo, card_id as cardId, user_id as userId, " +
             "principal, annual_rate as rate, term_months as term, " +
             "start_date as startTime, end_date as endTime, " +
             "auto_renew, status, created_time as createdTime " +
@@ -28,7 +28,7 @@ public interface FixedDepositMapper {
     List<FixedDeposit> findByUserId(@Param("userId") String userId);
 
     // 根据卡号查询 - 使用字段别名映射
-    @Select("SELECT fd_id as fdId, card_id as cardId, user_id as userId, " +
+    @Select("SELECT fd_id as fdId, fd_no as fdNo, card_id as cardId, user_id as userId, " +
             "principal, annual_rate as rate, term_months as term, " +
             "start_date as startTime, end_date as endTime, " +
             "auto_renew, status, created_time as createdTime " +
@@ -37,7 +37,7 @@ public interface FixedDepositMapper {
     List<FixedDeposit> findByCardId(@Param("cardId") String cardId);
 
     // 根据ID查询 - 使用字段别名映射
-    @Select("SELECT fd_id as fdId, card_id as cardId, user_id as userId, " +
+    @Select("SELECT fd_id as fdId, fd_no as fdNo, card_id as cardId, user_id as userId, " +
             "principal, annual_rate as rate, term_months as term, " +
             "start_date as startTime, end_date as endTime, " +
             "auto_renew, status, created_time as createdTime " +
@@ -47,4 +47,7 @@ public interface FixedDepositMapper {
     // 更新状态
     @Update("UPDATE fixed_deposit SET status = #{status} WHERE fd_id = #{fdId}")
     int updateStatus(@Param("fdId") Integer fdId, @Param("status") Integer status);
+
+
+
 }

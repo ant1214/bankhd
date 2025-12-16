@@ -1,6 +1,7 @@
 package com.zychen.bank.service;
 
 import com.zychen.bank.dto.BindCardDTO;
+import com.zychen.bank.dto.UnbindCardDTO;
 import com.zychen.bank.model.BankCard;
 
 import java.util.List;
@@ -19,4 +20,9 @@ public interface BankCardService {
 
     // 检查银行卡是否已存在
     boolean isCardExists(String cardId);
+
+    /**
+     * 解绑银行卡
+     */
+    Map<String, Object> unbindCard(UnbindCardDTO dto, String userId);
 }

@@ -1,8 +1,6 @@
 package com.zychen.bank.service;
 
-import com.zychen.bank.dto.ChangePasswordDTO;
-import com.zychen.bank.dto.LoginDTO;
-import com.zychen.bank.dto.RegisterDTO;
+import com.zychen.bank.dto.*;
 import com.zychen.bank.model.User;
 
 import java.util.Map;
@@ -34,4 +32,15 @@ public interface UserService {
 
     // 修改密码
     void changePassword(String userId, ChangePasswordDTO changePasswordDTO);
+
+    /**
+     * 管理员添加新管理员
+     */
+    Map<String, Object> addAdmin(AddAdminDTO addAdminDTO, String operatorId);
+
+    /**
+     * 更新用户信息
+     */
+    Map<String, Object> updateUserInfo(String userId, UpdateUserInfoDTO updateDTO);
+
 }

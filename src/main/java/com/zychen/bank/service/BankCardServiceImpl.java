@@ -1,9 +1,14 @@
 package com.zychen.bank.service;
 
 import com.zychen.bank.dto.BindCardDTO;
+import com.zychen.bank.dto.UnbindCardDTO;
 import com.zychen.bank.mapper.BankCardMapper;
+import com.zychen.bank.mapper.FixedDepositMapper;
+import com.zychen.bank.mapper.FreezeRecordMapper;
 import com.zychen.bank.mapper.UserInfoMapper;
 import com.zychen.bank.model.BankCard;
+import com.zychen.bank.model.FixedDeposit;
+import com.zychen.bank.model.FreezeRecord;
 import com.zychen.bank.model.UserInfo;
 import com.zychen.bank.service.BankCardService;
 import com.zychen.bank.utils.PasswordUtil;
@@ -14,11 +19,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
 public class BankCardServiceImpl implements BankCardService {
+    @Autowired
+    private FixedDepositMapper fixedDepositMapper;
+
+    @Autowired
+    private FreezeRecordMapper freezeRecordMapper;
 
     @Autowired
     private BankCardMapper bankCardMapper;
@@ -94,5 +106,61 @@ public class BankCardServiceImpl implements BankCardService {
     @Override
     public boolean isCardExists(String cardId) {
         return bankCardMapper.countByCardId(cardId) > 0;
+    }
+
+
+    @Override
+    @Transactional
+    public Map<String, Object> unbindCard(UnbindCardDTO dto, String userId) {
+        // 1. 验证银行卡
+        BankCard bankCard = bankCardMapper.findByCardId(dto.getCardId());
+        if (bankCard == null) {
+            throw new RuntimeException("银行卡不存在");
+        }
+
+        // 2. 验证权限
+        if (!bankCard.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此银行卡");
+        }
+
+        // 3. 验证交易密码
+        if (!passwordUtil.matches(dto.getCardPassword(), bankCard.getCardPassword())) {
+            throw new RuntimeException("交易密码错误");
+        }
+
+        // 4. 验证银行卡状态
+        if (bankCard.getStatus() != 0) {
+            throw new RuntimeException("银行卡状态异常，无法解绑");
+        }
+
+        // 5. 验证余额为0
+        if (bankCard.getBalance().compareTo(BigDecimal.ZERO) != 0) {
+            throw new RuntimeException("银行卡余额不为0，请先取出所有余额");
+        }
+
+        // 6. 验证无定期存款
+        List<FixedDeposit> activeDeposits = fixedDepositMapper.findByCardId(dto.getCardId());
+        boolean hasActiveDeposit = activeDeposits.stream()
+                .anyMatch(deposit -> deposit.getStatus() == 0); // 0=进行中
+        if (hasActiveDeposit) {
+            throw new RuntimeException("存在未到期的定期存款，无法解绑");
+        }
+
+        // 7. 验证无冻结记录
+        FreezeRecord activeFreeze = freezeRecordMapper.findActiveFreezeByCardId(dto.getCardId());
+        if (activeFreeze != null) {
+            throw new RuntimeException("银行卡处于冻结状态，无法解绑");
+        }
+
+        // 8. 更新银行卡状态为"已注销"(3)
+        bankCardMapper.updateStatus(dto.getCardId(), 3);
+
+        // 9. 返回结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("cardId", dto.getCardId());
+        result.put("unbindTime", LocalDateTime.now());
+        result.put("message", "银行卡解绑成功");
+
+        return result;
     }
 }

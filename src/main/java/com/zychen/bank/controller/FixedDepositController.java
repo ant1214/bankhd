@@ -1,6 +1,8 @@
 package com.zychen.bank.controller;
 
+import com.zychen.bank.dto.EarlyWithdrawDTO;
 import com.zychen.bank.dto.FixedDepositDTO;
+import com.zychen.bank.dto.MatureWithdrawDTO;
 import com.zychen.bank.model.FixedDeposit;
 import com.zychen.bank.service.FixedDepositService;
 import com.zychen.bank.utils.JwtUtil;
@@ -121,6 +123,65 @@ public class FixedDepositController {
             response.put("code", 200);
             response.put("message", "查询成功");
             response.put("data", deposits);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("code", 400);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+
+    /**
+     * 提前支取定期存款
+     */
+    @PostMapping("/{fdId}/early-withdraw")
+    public ResponseEntity<?> earlyWithdraw(
+            @PathVariable Integer fdId,
+            @Valid @RequestBody EarlyWithdrawDTO dto,
+            HttpServletRequest request) {
+        try {
+            // 从token获取用户ID
+            String token = request.getHeader("Authorization").substring(7);
+            String userId = jwtUtil.getUserIdFromToken(token);
+
+            Map<String, Object> result = fixedDepositService.earlyWithdraw(fdId, userId, dto.getCardPassword());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "定期存款提前支取成功");
+            response.put("data", result);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("code", 400);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    /**
+     * 到期转出定期存款
+     */
+    @PostMapping("/{fdId}/mature")
+    public ResponseEntity<?> matureWithdraw(
+            @PathVariable Integer fdId,
+            @Valid @RequestBody MatureWithdrawDTO dto,
+            HttpServletRequest request) {
+        try {
+            // 从token获取用户ID
+            String token = request.getHeader("Authorization").substring(7);
+            String userId = jwtUtil.getUserIdFromToken(token);
+
+            Map<String, Object> result = fixedDepositService.matureWithdraw(fdId, userId, dto.getCardPassword());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "定期存款到期转出成功");
+            response.put("data", result);
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {

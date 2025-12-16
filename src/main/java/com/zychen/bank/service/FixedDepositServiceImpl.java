@@ -3,9 +3,12 @@ package com.zychen.bank.service;
 import com.zychen.bank.dto.FixedDepositDTO;
 import com.zychen.bank.mapper.BankCardMapper;
 import com.zychen.bank.mapper.FixedDepositMapper;
+import com.zychen.bank.mapper.TransactionMapper;
 import com.zychen.bank.model.BankCard;
 import com.zychen.bank.model.FixedDeposit;
+import com.zychen.bank.model.Transaction;
 import com.zychen.bank.service.FixedDepositService;
+import com.zychen.bank.utils.IDGenerator;
 import com.zychen.bank.utils.PasswordUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -18,7 +21,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import java.time.temporal.ChronoUnit;
+import java.time.ZoneId;
 @Service
 public class FixedDepositServiceImpl implements FixedDepositService {
     @Autowired
@@ -29,6 +33,11 @@ public class FixedDepositServiceImpl implements FixedDepositService {
     @Autowired
     private BankCardMapper bankCardMapper;
 
+    @Autowired
+    private TransactionMapper transactionMapper;
+
+    @Autowired
+    private IDGenerator idGenerator;
     // 定期存款利率表：期限(月) -> 年利率
     private static final Map<Integer, BigDecimal> INTEREST_RATES = new HashMap<>();
     static {
@@ -152,4 +161,228 @@ public class FixedDepositServiceImpl implements FixedDepositService {
 
         return fixedDepositMapper.findByCardId(cardId);
     }
+
+
+    @Override
+    @Transactional
+    public Map<String, Object> earlyWithdraw(Integer fdId, String userId, String cardPassword) {
+        // 1. 查询定期存款
+        FixedDeposit fixedDeposit = fixedDepositMapper.findById(fdId);
+        if (fixedDeposit == null) {
+            throw new RuntimeException("定期存款不存在");
+        }
+
+        // 2. 验证权限
+        if (!fixedDeposit.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此定期存款");
+        }
+
+        // 3. 验证状态
+        if (fixedDeposit.getStatus() != 0) {
+            throw new RuntimeException("定期存款状态异常，无法提前支取");
+        }
+
+        // 4. 查询银行卡
+        BankCard bankCard = bankCardMapper.findByCardId(fixedDeposit.getCardId());
+        if (bankCard == null) {
+            throw new RuntimeException("银行卡不存在");
+        }
+
+        // 5. 验证交易密码
+        if (!passwordUtil.matches(cardPassword, bankCard.getCardPassword())) {
+            throw new RuntimeException("交易密码错误");
+        }
+
+        // 6. 计算持有天数
+        Date startDate = fixedDeposit.getStartTime();
+        Date currentDate = new Date();
+        long diffInMillies = Math.abs(currentDate.getTime() - startDate.getTime());
+        int heldDays = (int) (diffInMillies / (1000 * 60 * 60 * 24));
+
+        if (heldDays <= 0) {
+            throw new RuntimeException("存款时间太短，无法支取");
+        }
+
+        // 7. 计算利息（活期利率）
+        // 活期年利率：0.35%，日利率：0.35%/365
+        BigDecimal currentAnnualRate = new BigDecimal("0.0035");
+        BigDecimal dailyRate = currentAnnualRate.divide(new BigDecimal("365"), 8, BigDecimal.ROUND_HALF_UP);
+
+        BigDecimal principal = fixedDeposit.getPrincipal();
+        BigDecimal interest = principal.multiply(dailyRate)
+                .multiply(new BigDecimal(heldDays))
+                .setScale(2, BigDecimal.ROUND_HALF_UP);
+
+        // 8. 计算总金额（本金 + 活期利息）
+        BigDecimal totalAmount = principal.add(interest);
+
+        // 9. 更新银行卡余额
+        BigDecimal newBalance = bankCard.getBalance().add(totalAmount);
+        BigDecimal newAvailableBalance = bankCard.getAvailableBalance().add(totalAmount);
+
+        int updateResult = bankCardMapper.updateBalance(
+                fixedDeposit.getCardId(),
+                newBalance,
+                newAvailableBalance,
+                java.time.LocalDateTime.now()
+        );
+
+        if (updateResult == 0) {
+            throw new RuntimeException("更新余额失败");
+        }
+
+        // 10. 更新定期存款状态为"已支取"
+        fixedDepositMapper.updateStatus(fdId, 2); // 2=已支取
+
+        // 11. 记录交易流水（添加这部分代码）
+        Transaction transaction = new Transaction();
+        transaction.setTransNo(idGenerator.generateTransNo());
+        transaction.setCardId(fixedDeposit.getCardId());
+        transaction.setUserId(userId);
+        transaction.setTransType("WITHDRAW");
+        transaction.setTransSubtype("FIXED_DEPOSIT_EARLY");
+        transaction.setAmount(totalAmount);
+        transaction.setBalanceBefore(bankCard.getBalance());
+        transaction.setBalanceAfter(newBalance);
+        transaction.setFee(BigDecimal.ZERO);
+        transaction.setCurrency("CNY");
+        transaction.setStatus(1);
+        transaction.setRemark("定期存款提前支取");
+        transaction.setOperatorId(userId);
+        transaction.setOperatorType("USER");
+        transaction.setTransTime(java.time.LocalDateTime.now());
+        transaction.setCompletedTime(java.time.LocalDateTime.now());
+        transactionMapper.insert(transaction);
+
+        // 12. 返回结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("fdId", fdId);
+        result.put("cardId", fixedDeposit.getCardId());
+        result.put("principal", principal);
+        result.put("heldDays", heldDays);
+        result.put("interest", interest);
+        result.put("totalAmount", totalAmount);
+        result.put("transNo", transaction.getTransNo());  // 添加交易流水号
+        result.put("withdrawTime", new Date());
+
+        return result;
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> matureWithdraw(Integer fdId, String userId, String cardPassword) {
+        // 1. 查询定期存款
+        FixedDeposit fixedDeposit = fixedDepositMapper.findById(fdId);
+        if (fixedDeposit == null) {
+            throw new RuntimeException("定期存款不存在");
+        }
+
+        // 2. 验证权限
+        if (!fixedDeposit.getUserId().equals(userId)) {
+            throw new RuntimeException("无权操作此定期存款");
+        }
+
+        // 3. 验证状态 - 必须是"进行中"(0)
+        if (fixedDeposit.getStatus() != 0) {
+            throw new RuntimeException("定期存款状态异常，无法转出");
+        }
+
+        // 4. 验证是否已到期
+        Date endDate = fixedDeposit.getEndTime();
+        Date currentDate = new Date();
+        if (currentDate.before(endDate)) {
+            throw new RuntimeException("定期存款尚未到期");
+        }
+
+        // 5. 查询银行卡
+        BankCard bankCard = bankCardMapper.findByCardId(fixedDeposit.getCardId());
+        if (bankCard == null) {
+            throw new RuntimeException("银行卡不存在");
+        }
+
+        // 6. 验证交易密码
+        if (!passwordUtil.matches(cardPassword, bankCard.getCardPassword())) {
+            throw new RuntimeException("交易密码错误");
+        }
+
+        // 7. 计算利息（按定期利率）
+        BigDecimal principal = fixedDeposit.getPrincipal();
+        BigDecimal annualRate = fixedDeposit.getRate(); // 定期年利率
+
+        // 计算持有月数
+        Date startDate = fixedDeposit.getStartTime();
+        long diffInMonths = ChronoUnit.MONTHS.between(
+                startDate.toInstant().atZone(ZoneId.systemDefault()).toLocalDate(),
+                currentDate.toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+        );
+
+        // 月利率 = 年利率 / 12
+        BigDecimal monthlyRate = annualRate.divide(new BigDecimal("12"), 8, BigDecimal.ROUND_HALF_UP);
+        BigDecimal interest = principal.multiply(monthlyRate)
+                .multiply(new BigDecimal(diffInMonths))
+                .setScale(2, BigDecimal.ROUND_HALF_UP);
+
+        // 8. 计算总金额（本金 + 定期利息）
+        BigDecimal totalAmount = principal.add(interest);
+
+        // 9. 更新银行卡余额
+        BigDecimal newBalance = bankCard.getBalance().add(totalAmount);
+        BigDecimal newAvailableBalance = bankCard.getAvailableBalance().add(totalAmount);
+
+        int updateResult = bankCardMapper.updateBalance(
+                fixedDeposit.getCardId(),
+                newBalance,
+                newAvailableBalance,
+                java.time.LocalDateTime.now()
+        );
+
+        if (updateResult == 0) {
+            throw new RuntimeException("更新余额失败");
+        }
+
+        // 10. 更新定期存款状态为"已转出"
+        fixedDepositMapper.updateStatus(fdId, 3); // 3=已转出（根据你的数据库状态）
+
+        // 11. 记录交易流水
+        Transaction transaction = new Transaction();
+
+        // 生成交易流水号
+        String transNo = "T" + java.time.LocalDateTime.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+                + String.format("%04d", (int)(Math.random() * 10000));
+
+        transaction.setTransNo(transNo);
+        transaction.setCardId(fixedDeposit.getCardId());
+        transaction.setUserId(userId);
+        transaction.setTransType("WITHDRAW");
+        transaction.setTransSubtype("FIXED_DEPOSIT_MATURE");
+        transaction.setAmount(totalAmount);
+        transaction.setBalanceBefore(bankCard.getBalance());
+        transaction.setBalanceAfter(newBalance);
+        transaction.setFee(BigDecimal.ZERO);
+        transaction.setCurrency("CNY");
+        transaction.setStatus(1);
+        transaction.setRemark("定期存款到期转出");
+        transaction.setOperatorId(userId);
+        transaction.setOperatorType("USER");
+        transaction.setTransTime(java.time.LocalDateTime.now());
+        transaction.setCompletedTime(java.time.LocalDateTime.now());
+
+        transactionMapper.insert(transaction);
+
+        // 12. 返回结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("fdId", fdId);
+        result.put("cardId", fixedDeposit.getCardId());
+        result.put("principal", principal);
+        result.put("annualRate", annualRate);
+        result.put("interest", interest);
+        result.put("totalAmount", totalAmount);
+        result.put("heldMonths", diffInMonths);
+        result.put("transNo", transNo);
+        result.put("withdrawTime", new Date());
+
+        return result;
+    }
+
 }

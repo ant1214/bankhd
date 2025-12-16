@@ -38,4 +38,6 @@ public interface BankCardMapper {
                       @Param("availableBalance") BigDecimal availableBalance,
                       @Param("lastTransactionTime") LocalDateTime lastTransactionTime);
 
+    @Update("UPDATE bank_card SET status = #{status} WHERE card_id = #{cardId}")
+    int updateStatus(@Param("cardId") String cardId, @Param("status") Integer status);
 }

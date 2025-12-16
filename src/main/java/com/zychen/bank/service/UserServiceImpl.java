@@ -1,8 +1,6 @@
 package com.zychen.bank.service;
 
-import com.zychen.bank.dto.ChangePasswordDTO;
-import com.zychen.bank.dto.LoginDTO;
-import com.zychen.bank.dto.RegisterDTO;
+import com.zychen.bank.dto.*;
 import com.zychen.bank.mapper.UserInfoMapper;
 import com.zychen.bank.mapper.UserMapper;
 import com.zychen.bank.model.User;
@@ -240,5 +238,164 @@ public class UserServiceImpl implements UserService {
         }
 
         log.info("用户修改密码成功: {}", userId);
+    }
+
+
+    @Override
+    @Transactional
+    public Map<String, Object> addAdmin(AddAdminDTO addAdminDTO, String operatorId) {
+        // 1. 检查用户名是否已存在
+        if (isUsernameExists(addAdminDTO.getUsername())) {
+            throw new RuntimeException("用户名已存在");
+        }
+
+        // 2. 检查手机号是否已存在
+        if (isPhoneExists(addAdminDTO.getPhone())) {
+            throw new RuntimeException("手机号已注册");
+        }
+
+        // 3. 生成用户ID
+        String userId = idGenerator.generateAdminId();
+
+        // 4. 创建管理员用户
+        User user = new User();
+        user.setUserId(userId);
+        user.setUsername(addAdminDTO.getUsername());
+        user.setPhone(addAdminDTO.getPhone());
+        user.setPassword(passwordUtil.encode(addAdminDTO.getPassword()));
+        user.setRole(1);  // 管理员角色
+        user.setAccountStatus(0);  // 正常状态
+        user.setCreatedTime(LocalDateTime.now());
+
+        // 5. 保存用户
+        int result = userMapper.insert(user);
+        if (result <= 0) {
+            throw new RuntimeException("创建管理员账号失败");
+        }
+
+        // 6. 创建用户信息（可选）
+        if (addAdminDTO.getName() != null) {
+            UserInfo userInfo = new UserInfo();
+            userInfo.setUserId(userId);
+            userInfo.setName(addAdminDTO.getName());
+            userInfo.setIdNumber(addAdminDTO.getIdNumber());
+            userInfo.setUpdatedTime(LocalDateTime.now());
+
+            userInfoMapper.insert(userInfo);
+        }
+
+        // 7. 记录操作日志（可选，可以先跳过）
+
+        // 8. 返回结果
+        Map<String, Object> resultMap = new HashMap<>();
+        resultMap.put("user_id", userId);
+        resultMap.put("username", addAdminDTO.getUsername());
+        resultMap.put("phone", addAdminDTO.getPhone());
+        resultMap.put("role", 1);
+        resultMap.put("created_by", operatorId);
+        resultMap.put("created_time", LocalDateTime.now());
+
+        log.info("管理员添加新管理员成功: 操作者={}, 新管理员={}", operatorId, addAdminDTO.getUsername());
+
+        return resultMap;
+    }
+
+
+    @Override
+    @Transactional
+    public Map<String, Object> updateUserInfo(String userId, UpdateUserInfoDTO updateDTO) {
+        // 1. 验证用户存在
+        User user = userMapper.findByUserId(userId);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+
+        // 2. 如果要更新手机号，检查手机号是否已存在（排除自己）
+        if (updateDTO.getPhone() != null && !updateDTO.getPhone().equals(user.getPhone())) {
+            User existingUser = userMapper.findByPhone(updateDTO.getPhone());
+            if (existingUser != null && !existingUser.getUserId().equals(userId)) {
+                throw new RuntimeException("手机号已被其他用户使用");
+            }
+        }
+
+        // 3. 更新用户表（user）
+        boolean userUpdated = false;
+        if (updateDTO.getPhone() != null) {
+            userMapper.updatePhone(userId, updateDTO.getPhone());
+            userUpdated = true;
+        }
+
+        // 4. 更新用户信息表（user_info）
+        boolean userInfoUpdated = false;
+        UserInfo userInfo = userInfoMapper.findByUserId(userId);
+
+        if (userInfo == null) {
+            // 如果用户信息不存在，创建新的
+            userInfo = new UserInfo();
+            userInfo.setUserId(userId);
+            userInfo.setName(updateDTO.getName() != null ? updateDTO.getName() : "");
+            userInfo.setIdNumber("");  // 身份证号不能为空，但这里可能还没有
+            userInfo.setGender(updateDTO.getGender());
+            if (updateDTO.getBirthDate() != null) {
+                userInfo.setBirthDate(updateDTO.getBirthDate());  // LocalDate类型
+                userInfoUpdated = true;
+            }
+            userInfo.setEmail(updateDTO.getEmail());
+            userInfo.setAddress(updateDTO.getAddress());
+            userInfo.setUpdatedTime(LocalDateTime.now());
+
+            userInfoMapper.insert(userInfo);
+            userInfoUpdated = true;
+        } else {
+            // 更新现有用户信息
+            if (updateDTO.getName() != null && !updateDTO.getName().equals(userInfo.getName())) {
+                userInfo.setName(updateDTO.getName());
+                userInfoUpdated = true;
+            }
+            if (updateDTO.getGender() != null && !updateDTO.getGender().equals(userInfo.getGender())) {
+                userInfo.setGender(updateDTO.getGender());
+                userInfoUpdated = true;
+            }
+            if (updateDTO.getBirthDate() != null && !updateDTO.getBirthDate().equals(userInfo.getBirthDate())) {
+                userInfo.setBirthDate(updateDTO.getBirthDate());
+                userInfoUpdated = true;
+            }
+            if (updateDTO.getEmail() != null && !updateDTO.getEmail().equals(userInfo.getEmail())) {
+                userInfo.setEmail(updateDTO.getEmail());
+                userInfoUpdated = true;
+            }
+            if (updateDTO.getAddress() != null && !updateDTO.getAddress().equals(userInfo.getAddress())) {
+                userInfo.setAddress(updateDTO.getAddress());
+                userInfoUpdated = true;
+            }
+
+            if (userInfoUpdated) {
+                userInfo.setUpdatedTime(LocalDateTime.now());
+                userInfoMapper.update(userInfo);
+            }
+        }
+
+        // 5. 返回更新结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("userId", userId);
+        result.put("updatedFields", new HashMap<>());
+
+        Map<String, Object> updatedFields = (Map<String, Object>) result.get("updatedFields");
+        if (userUpdated) {
+            updatedFields.put("phone", updateDTO.getPhone());
+        }
+        if (userInfoUpdated) {
+            if (updateDTO.getName() != null) updatedFields.put("name", updateDTO.getName());
+            if (updateDTO.getGender() != null) updatedFields.put("gender", updateDTO.getGender());
+            if (updateDTO.getBirthDate() != null) updatedFields.put("birthDate", updateDTO.getBirthDate());
+            if (updateDTO.getEmail() != null) updatedFields.put("email", updateDTO.getEmail());
+            if (updateDTO.getAddress() != null) updatedFields.put("address", updateDTO.getAddress());
+        }
+
+        result.put("updateTime", LocalDateTime.now());
+
+        log.info("用户信息更新成功: userId={}, 更新字段={}", userId, updatedFields.keySet());
+
+        return result;
     }
 }

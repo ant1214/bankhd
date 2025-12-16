@@ -1,8 +1,10 @@
 package com.zychen.bank.controller;
 
 import com.zychen.bank.dto.ChangePasswordDTO;
+import com.zychen.bank.dto.UpdateUserInfoDTO;
 import com.zychen.bank.model.User;
 import com.zychen.bank.service.UserService;
+import com.zychen.bank.utils.JwtUtil;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +19,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/user")
 public class UserController {
+    @Autowired
+    private JwtUtil jwtUtil;
 
     @Autowired
     private UserService userService;
@@ -126,6 +130,55 @@ public class UserController {
             error.put("data", null);
 
             return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+
+    /**
+     * 更新用户信息
+     * 用户只能更新自己的信息
+     */
+    @PutMapping("/{userId}")
+    public ResponseEntity<?> updateUserInfo(
+            @PathVariable String userId,
+            @Valid @RequestBody UpdateUserInfoDTO updateDTO,
+            HttpServletRequest request) {
+        try {
+            // 从token获取当前用户ID
+            String token = request.getHeader("Authorization").substring(7);
+            String currentUserId = jwtUtil.getUserIdFromToken(token);
+            Integer currentUserRole = jwtUtil.getRoleFromToken(token);
+
+            // 权限验证：用户只能更新自己的信息，管理员可以更新任何用户
+            if (!currentUserId.equals(userId) && currentUserRole != 1) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("code", 403);
+                error.put("message", "无权更新其他用户信息");
+                error.put("data", null);
+                return ResponseEntity.status(403).body(error);
+            }
+
+            // 调用Service更新用户信息
+            Map<String, Object> result = userService.updateUserInfo(userId, updateDTO);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "用户信息更新成功");
+            response.put("data", result);
+
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 400);
+            error.put("message", e.getMessage());
+            error.put("data", null);
+            return ResponseEntity.badRequest().body(error);  // 改为 error
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            error.put("data", null);
+            return ResponseEntity.internalServerError().body(error);  // 改为 error
         }
     }
 }

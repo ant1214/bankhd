@@ -22,6 +22,7 @@ public class JwtInterceptor implements HandlerInterceptor {
             "/auth/login",
             "/auth/register",
             "/auth/health",
+            "/auth/admin/login",
             "/auth/ping"
     );
 
