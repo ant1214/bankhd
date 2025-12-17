@@ -49,4 +49,35 @@ public interface TransactionMapper {
                           @Param("transType") String transType,
                           @Param("startDate") LocalDate startDate,
                           @Param("endDate") LocalDate endDate);
+
+    /**
+     * 根据用户ID和年月查询交易记录
+     */
+    @Select("SELECT * FROM transaction " +
+            "WHERE user_id = #{userId} " +
+            "AND YEAR(trans_time) = #{year} " +
+            "AND MONTH(trans_time) = #{month} " +
+            "AND status = 1 " +  // 只统计成功的交易
+            "ORDER BY trans_time DESC")
+    List<Transaction> findByUserIdAndMonth(
+            @Param("userId") String userId,
+            @Param("year") int year,
+            @Param("month") int month);
+
+    /**
+     * 查询指定日期前的最后一笔交易
+     */
+    @Select("<script>" +
+            "SELECT * FROM transaction " +
+            "WHERE user_id = #{userId} " +
+            "<if test='cardId != null'>AND card_id = #{cardId}</if> " +
+            "AND DATE(trans_time) &lt;= DATE(#{date}) " +  // 两边都用DATE()函数
+            "AND status = 1 " +
+            "ORDER BY trans_time DESC " +
+            "LIMIT 1" +
+            "</script>")
+    Transaction findLastTransactionBeforeDate(
+            @Param("userId") String userId,
+            @Param("cardId") String cardId,
+            @Param("date") java.sql.Date date);
 }

@@ -5,6 +5,8 @@ import com.zychen.bank.dto.FixedDepositDTO;
 import com.zychen.bank.dto.MatureWithdrawDTO;
 import com.zychen.bank.model.FixedDeposit;
 import com.zychen.bank.service.FixedDepositService;
+import com.zychen.bank.service.OperationLogService;
+import com.zychen.bank.service.UserService;
 import com.zychen.bank.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -26,6 +28,24 @@ public class FixedDepositController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private OperationLogService operationLogService;
+    @Autowired
+    private UserService userService;
+
+    /**
+     * 安全获取用户角色，避免异常影响主流程
+     */
+    private Integer getUserRoleSafely(String userId) {
+        if (userId == null) {
+            return null;
+        }
+        try {
+            return userService.getUserRole(userId);
+        } catch (Exception e) {
+            return 0;  // 默认普通用户
+        }
+    }
     /**
      * 创建定期存款
      */
@@ -39,7 +59,27 @@ public class FixedDepositController {
             String userId = jwtUtil.getUserIdFromToken(token);
 
             FixedDeposit fixedDeposit = fixedDepositService.createFixedDeposit(dto, userId);
+            // ============ 添加成功日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
 
+            Integer userRole = getUserRoleSafely(userId);
+
+            operationLogService.logOperation(
+                    userId,
+                    userRole,
+                    "FIXED_DEPOSIT",
+                    "CREATE_FD",
+                    "创建定期存款成功，金额：" + dto.getPrincipal() + "元，卡号：" + dto.getCardId() + "，期限：" + dto.getTerm() + "个月",
+                    "CARD",
+                    dto.getCardId(),
+                    ipAddress,
+                    userAgent,
+                    1,
+                    null,
+                    0
+            );
+            // ============ 日志结束 ============
             Map<String, Object> response = new HashMap<>();
             response.put("code", 200);
             response.put("message", "定期存款创建成功");
@@ -47,6 +87,35 @@ public class FixedDepositController {
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            // ============ 添加失败日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
+
+            // 获取用户ID
+            String userId = null;
+            try {
+                String token = request.getHeader("Authorization").substring(7);
+                userId = jwtUtil.getUserIdFromToken(token);
+            } catch (Exception ex) {
+                // 忽略
+            }
+
+            operationLogService.logOperation(
+                    userId,
+                    userId != null ? getUserRoleSafely(userId) : null,
+                    "FIXED_DEPOSIT",
+                    "CREATE_FD",
+                    "创建定期存款失败：" + e.getMessage() + "，金额：" + dto.getPrincipal() + "元，卡号：" + dto.getCardId(),
+                    "CARD",
+                    dto.getCardId(),
+                    ipAddress,
+                    userAgent,
+                    0,
+                    e.getMessage(),
+                    0
+            );
+            // ============ 日志结束 ============
+
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("code", 400);
             errorResponse.put("message", e.getMessage());
@@ -148,7 +217,28 @@ public class FixedDepositController {
             String userId = jwtUtil.getUserIdFromToken(token);
 
             Map<String, Object> result = fixedDepositService.earlyWithdraw(fdId, userId, dto.getCardPassword());
+            // ============ 添加成功日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
 
+            // 获取定期存款详情（用于记录卡号）
+            FixedDeposit deposit = fixedDepositService.getFixedDepositDetail(fdId, userId);
+
+            operationLogService.logOperation(
+                    userId,
+                    getUserRoleSafely(userId),
+                    "FIXED_DEPOSIT",
+                    "EARLY_WITHDRAW_FD",
+                    "提前支取定期存款成功，存单ID：" + fdId + "，卡号：" + deposit.getCardId() + "，本金：" + deposit.getPrincipal() + "元",
+                    "FIXED_DEPOSIT",
+                    String.valueOf(fdId),
+                    ipAddress,
+                    userAgent,
+                    1,
+                    null,
+                    0
+            );
+            // ============ 日志结束 ============
             Map<String, Object> response = new HashMap<>();
             response.put("code", 200);
             response.put("message", "定期存款提前支取成功");
@@ -156,6 +246,33 @@ public class FixedDepositController {
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            // ============ 添加失败日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
+
+            String userId = null;
+            try {
+                String token = request.getHeader("Authorization").substring(7);
+                userId = jwtUtil.getUserIdFromToken(token);
+            } catch (Exception ex) {
+                // 忽略
+            }
+
+            operationLogService.logOperation(
+                    userId,
+                    userId != null ? getUserRoleSafely(userId) : null,
+                    "FIXED_DEPOSIT",
+                    "EARLY_WITHDRAW_FD",
+                    "提前支取定期存款失败：" + e.getMessage() + "，存单ID：" + fdId,
+                    "FIXED_DEPOSIT",
+                    String.valueOf(fdId),
+                    ipAddress,
+                    userAgent,
+                    0,
+                    e.getMessage(),
+                    0
+            );
+            // ============ 日志结束 ============
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("code", 400);
             errorResponse.put("message", e.getMessage());
@@ -177,6 +294,28 @@ public class FixedDepositController {
             String userId = jwtUtil.getUserIdFromToken(token);
 
             Map<String, Object> result = fixedDepositService.matureWithdraw(fdId, userId, dto.getCardPassword());
+            // ============ 添加成功日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
+
+            // 获取定期存款详情
+            FixedDeposit deposit = fixedDepositService.getFixedDepositDetail(fdId, userId);
+
+            operationLogService.logOperation(
+                    userId,
+                    getUserRoleSafely(userId),
+                    "FIXED_DEPOSIT",
+                    "MATURE_FD",
+                    "到期转出定期存款成功，存单ID：" + fdId + "，卡号：" + deposit.getCardId() + "，本金：" + deposit.getPrincipal() + "元",
+                    "FIXED_DEPOSIT",
+                    String.valueOf(fdId),
+                    ipAddress,
+                    userAgent,
+                    1,
+                    null,
+                    0
+            );
+            // ============ 日志结束 ============
 
             Map<String, Object> response = new HashMap<>();
             response.put("code", 200);
@@ -185,6 +324,33 @@ public class FixedDepositController {
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            // ============ 添加失败日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
+
+            String userId = null;
+            try {
+                String token = request.getHeader("Authorization").substring(7);
+                userId = jwtUtil.getUserIdFromToken(token);
+            } catch (Exception ex) {
+                // 忽略
+            }
+
+            operationLogService.logOperation(
+                    userId,
+                    userId != null ? getUserRoleSafely(userId) : null,
+                    "FIXED_DEPOSIT",
+                    "MATURE_FD",
+                    "到期转出定期存款失败：" + e.getMessage() + "，存单ID：" + fdId,
+                    "FIXED_DEPOSIT",
+                    String.valueOf(fdId),
+                    ipAddress,
+                    userAgent,
+                    0,
+                    e.getMessage(),
+                    0
+            );
+            // ============ 日志结束 ============
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("code", 400);
             errorResponse.put("message", e.getMessage());

@@ -30,6 +30,7 @@ public interface UserService {
     // 获取用户完整信息（包括user_info）
     Map<String, Object> getUserFullInfo(String userId);
 
+    Integer getUserRole(String userId);
     // 修改密码
     void changePassword(String userId, ChangePasswordDTO changePasswordDTO);
 
@@ -42,5 +43,30 @@ public interface UserService {
      * 更新用户信息
      */
     Map<String, Object> updateUserInfo(String userId, UpdateUserInfoDTO updateDTO);
+
+
+    /**
+     * 查询所有用户（管理员用）
+     */
+    Map<String, Object> getUsers(UserQueryDTO queryDTO);
+
+    /**
+     * 获取用户的所有银行卡（管理员用）
+     */
+    Map<String, Object> getUserCards(String userId);
+    /**
+     * 获取用户统计信息
+     * @param userId 用户ID
+     * @return 用户统计信息
+     */
+    UserStatisticsDTO getUserStatistics(String userId);
+
+    /**
+     * 管理员重置用户密码
+     * @param adminId 管理员ID
+     * @param targetUserId 目标用户ID
+     * @param reason 重置原因
+     */
+    void resetUserPassword(String adminId, String targetUserId, String reason);
 
 }

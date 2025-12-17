@@ -2,7 +2,9 @@ package com.zychen.bank.controller;
 
 import com.zychen.bank.dto.ChangePasswordDTO;
 import com.zychen.bank.dto.UpdateUserInfoDTO;
+import com.zychen.bank.dto.UserStatisticsDTO;
 import com.zychen.bank.model.User;
+import com.zychen.bank.service.OperationLogService;
 import com.zychen.bank.service.UserService;
 import com.zychen.bank.utils.JwtUtil;
 import jakarta.validation.Valid;
@@ -24,7 +26,8 @@ public class UserController {
 
     @Autowired
     private UserService userService;
-
+    @Autowired
+    private OperationLogService operationLogService;
     /**
      * 获取当前登录用户信息
      */
@@ -103,7 +106,34 @@ public class UserController {
             String userId = (String) request.getAttribute("userId");
 
             userService.changePassword(userId, changePasswordDTO);
+            // ============ 添加成功日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
 
+            // 获取用户角色
+            Integer userRole = null;
+            try {
+                userRole = userService.getUserRole(userId);
+            } catch (Exception e) {
+                log.warn("获取用户角色失败: {}", userId, e);
+                userRole = 0; // 默认普通用户
+            }
+
+            operationLogService.logOperation(
+                    userId,
+                    userRole,
+                    "SECURITY",
+                    "CHANGE_PASSWORD",
+                    "修改密码成功",
+                    "USER",
+                    userId,
+                    ipAddress,
+                    userAgent,
+                    1,  // 成功
+                    null,
+                    0
+            );
+            // ============ 日志结束 ============
             Map<String, Object> response = new HashMap<>();
             response.put("code", 200);
             response.put("message", "密码修改成功");
@@ -114,7 +144,43 @@ public class UserController {
 
         } catch (RuntimeException e) {
             log.warn("密码修改失败: {}", e.getMessage());
+            // ============ 添加失败日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
 
+            // 获取用户ID（可能为null）
+            String userId = null;
+            try {
+                userId = (String) request.getAttribute("userId");
+            } catch (Exception ex) {
+                log.warn("获取用户ID失败", ex);
+            }
+
+            // 获取用户角色
+            Integer userRole = null;
+            if (userId != null) {
+                try {
+                    userRole = userService.getUserRole(userId);
+                } catch (Exception ex) {
+                    userRole = 0; // 默认普通用户
+                }
+            }
+
+            operationLogService.logOperation(
+                    userId,
+                    userRole,
+                    "SECURITY",
+                    "CHANGE_PASSWORD",
+                    "修改密码失败：" + e.getMessage(),
+                    "USER",
+                    userId,
+                    ipAddress,
+                    userAgent,
+                    0,  // 失败
+                    e.getMessage(),
+                    0
+            );
+            // ============ 日志结束 ============
             Map<String, Object> error = new HashMap<>();
             error.put("code", 400);
             error.put("message", e.getMessage());
@@ -123,7 +189,25 @@ public class UserController {
             return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
             log.error("密码修改异常", e);
+            // ============ 添加系统异常日志 ============
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
 
+            operationLogService.logOperation(
+                    null,
+                    null,
+                    "SECURITY",
+                    "CHANGE_PASSWORD",
+                    "修改密码时发生系统异常",
+                    "USER",
+                    null,
+                    ipAddress,
+                    userAgent,
+                    0,
+                    "系统内部错误",
+                    0
+            );
+            // ============ 日志结束 ============
             Map<String, Object> error = new HashMap<>();
             error.put("code", 500);
             error.put("message", "系统内部错误");
@@ -179,6 +263,55 @@ public class UserController {
             error.put("message", "系统内部错误");
             error.put("data", null);
             return ResponseEntity.internalServerError().body(error);  // 改为 error
+        }
+    }
+
+    /**
+     * 获取用户统计信息
+     * API: GET /api/users/{userId}/statistics
+     */
+    @GetMapping("/{userId}/statistics")
+    public ResponseEntity<Map<String, Object>> getUserStatistics(
+            @PathVariable String userId,
+            HttpServletRequest request) {
+        try {
+            // 权限验证：用户只能查看自己的统计信息
+            String currentUserId = (String) request.getAttribute("userId");
+
+            if (!userId.equals(currentUserId)) {
+                // 检查是否是管理员
+                String token = request.getHeader("Authorization").substring(7);
+                Integer role = jwtUtil.getRoleFromToken(token);
+
+                if (role == null || role != 1) { // 不是管理员
+                    Map<String, Object> error = new HashMap<>();
+                    error.put("code", 403);
+                    error.put("message", "只能查看自己的统计信息");
+                    return ResponseEntity.status(403).body(error);
+                }
+            }
+
+            // 获取统计信息
+            UserStatisticsDTO statistics = userService.getUserStatistics(userId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "查询成功");
+            response.put("data", statistics);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 400);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            log.error("获取用户统计信息异常", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            return ResponseEntity.internalServerError().body(error);
         }
     }
 }

@@ -43,4 +43,26 @@ public interface FreezeRecordMapper {
     // 根据记录ID查询
     @Select("SELECT * FROM freeze_record WHERE record_id = #{recordId}")
     FreezeRecord findById(@Param("recordId") Long recordId);
+
+    // 根据用户ID查询活跃的账户冻结记录
+    @Select("SELECT * FROM freeze_record WHERE user_id = #{userId} AND freeze_type = #{freezeType} AND status = 1")
+    List<FreezeRecord> findActiveByUserId(@Param("userId") String userId, @Param("freezeType") Integer freezeType);
+
+    // 根据卡号查询所有活跃的冻结记录（可能有多条）
+    @Select("SELECT * FROM freeze_record WHERE card_id = #{cardId} AND status = 1")
+    List<FreezeRecord> findActiveByCardId(@Param("cardId") String cardId);
+
+    // 根据冻结编号查询
+    @Select("SELECT * FROM freeze_record WHERE freeze_no = #{freezeNo}")
+    FreezeRecord findByFreezeNo(@Param("freezeNo") String freezeNo);
+
+    // 更新整个冻结记录对象
+    @Update("UPDATE freeze_record SET unfreeze_time = #{unfreezeTime}, status = #{status}, " +
+            "planned_unfreeze_time = #{plannedUnfreezeTime} WHERE record_id = #{recordId}")
+    int update(FreezeRecord record);
+
+    // 查询用户自己冻结的活跃记录
+    @Select("SELECT * FROM freeze_record WHERE card_id = #{cardId} AND user_id = #{userId} AND freeze_level = 1 AND status = 1")
+    FreezeRecord findActiveUserFreezeByCardId(@Param("cardId") String cardId, @Param("userId") String userId);
+
 }

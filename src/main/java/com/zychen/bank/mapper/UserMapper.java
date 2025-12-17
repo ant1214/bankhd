@@ -5,6 +5,7 @@ import com.zychen.bank.model.User;
 import org.apache.ibatis.annotations.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Mapper
 public interface UserMapper {
@@ -41,5 +42,42 @@ public interface UserMapper {
     @Update("UPDATE user SET phone = #{phone} WHERE user_id = #{userId}")
     int updatePhone(@Param("userId") String userId, @Param("phone") String phone);
 
+    // 查询用户列表（分页）
+    @Select("<script>" +
+            "SELECT * FROM user WHERE 1=1 " +
+            "<if test='search != null and search != \"\"'>" +
+            "   AND (username LIKE CONCAT('%', #{search}, '%') " +
+            "        OR phone LIKE CONCAT('%', #{search}, '%') " +
+            "        OR user_id IN (SELECT user_id FROM user_info WHERE name LIKE CONCAT('%', #{search}, '%')))" +
+            "</if>" +
+            "<if test='role != null'>AND role = #{role}</if>" +
+            "<if test='accountStatus != null'>AND account_status = #{accountStatus}</if>" +
+            "ORDER BY created_time DESC " +
+            "LIMIT #{offset}, #{pageSize}" +
+            "</script>")
+    List<User> findUsers(@Param("search") String search,
+                         @Param("role") Integer role,
+                         @Param("accountStatus") Integer accountStatus,
+                         @Param("offset") int offset,
+                         @Param("pageSize") int pageSize);
+
+    // 查询用户总数
+    @Select("<script>" +
+            "SELECT COUNT(*) FROM user WHERE 1=1 " +
+            "<if test='search != null and search != \"\"'>" +
+            "   AND (username LIKE CONCAT('%', #{search}, '%') " +
+            "        OR phone LIKE CONCAT('%', #{search}, '%') " +
+            "        OR user_id IN (SELECT user_id FROM user_info WHERE name LIKE CONCAT('%', #{search}, '%')))" +
+            "</if>" +
+            "<if test='role != null'>AND role = #{role}</if>" +
+            "<if test='accountStatus != null'>AND account_status = #{accountStatus}</if>" +
+            "</script>")
+    int countUsers(@Param("search") String search,
+                   @Param("role") Integer role,
+                   @Param("accountStatus") Integer accountStatus);
+
+
+    @Update("UPDATE user SET account_status = #{status} WHERE user_id = #{userId}")
+    int updateAccountStatus(@Param("userId") String userId, @Param("status") Integer status);
 
 }

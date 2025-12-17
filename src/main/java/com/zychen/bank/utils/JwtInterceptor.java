@@ -23,7 +23,10 @@ public class JwtInterceptor implements HandlerInterceptor {
             "/auth/register",
             "/auth/health",
             "/auth/admin/login",
-            "/auth/ping"
+            "/auth/ping",
+            "/auth/check-username",
+            "/auth/check-phone",
+            "/auth/check-id-number"
     );
 
     @Override

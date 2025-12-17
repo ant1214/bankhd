@@ -1,10 +1,8 @@
 package com.zychen.bank.service;
 
 import com.zychen.bank.dto.*;
-import com.zychen.bank.mapper.UserInfoMapper;
-import com.zychen.bank.mapper.UserMapper;
-import com.zychen.bank.model.User;
-import com.zychen.bank.model.UserInfo;
+import com.zychen.bank.mapper.*;
+import com.zychen.bank.model.*;
 import com.zychen.bank.utils.IDGenerator;
 import com.zychen.bank.utils.JwtUtil;
 import com.zychen.bank.utils.PasswordUtil;
@@ -13,8 +11,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -36,6 +38,123 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private IDGenerator idGenerator;
+
+    @Autowired
+    private BankCardMapper bankCardMapper;
+
+    @Autowired
+    private TransactionMapper transactionMapper;
+
+    @Autowired
+    private FixedDepositMapper fixedDepositMapper;
+    @Override
+    public UserStatisticsDTO getUserStatistics(String userId) {
+        UserStatisticsDTO statistics = new UserStatisticsDTO();
+
+        // 1. 调用银行卡统计方法
+        calculateCardStatistics(userId, statistics);
+
+        // 2. 调用定期存款统计方法
+        calculateFixedDepositStatistics(userId, statistics);
+
+        // 3. 调用本月交易统计方法
+        calculateMonthTransactionStatistics(userId, statistics);
+
+        return statistics;
+    }
+
+    private void calculateCardStatistics(String userId, UserStatisticsDTO statistics) {
+        // 查询用户所有银行卡
+        List<BankCard> cards = bankCardMapper.findByUserId(userId);
+
+        BigDecimal totalBalance = BigDecimal.ZERO;
+        BigDecimal availableBalance = BigDecimal.ZERO;
+        BigDecimal frozenAmount = BigDecimal.ZERO;
+        int activeCardCount = 0;
+
+        for (BankCard card : cards) {
+            // 处理可能的null值
+            BigDecimal balance = card.getBalance() != null ? card.getBalance() : BigDecimal.ZERO;
+            BigDecimal availBalance = card.getAvailableBalance() != null ? card.getAvailableBalance() : BigDecimal.ZERO;
+            BigDecimal frozen = card.getFrozenAmount() != null ? card.getFrozenAmount() : BigDecimal.ZERO;
+
+            totalBalance = totalBalance.add(balance);
+            availableBalance = availableBalance.add(availBalance);
+            frozenAmount = frozenAmount.add(frozen);
+
+            // 状态0=正常
+            if (card.getStatus() != null && card.getStatus() == 0) {
+                activeCardCount++;
+            }
+        }
+
+        statistics.setTotalBalance(totalBalance);
+        statistics.setAvailableBalance(availableBalance);
+        statistics.setFrozenAmount(frozenAmount);
+        statistics.setCardCount(cards.size());
+        statistics.setActiveCardCount(activeCardCount);
+    }
+
+    private void calculateFixedDepositStatistics(String userId, UserStatisticsDTO statistics) {
+        // 查询用户所有定期存款
+        List<FixedDeposit> fixedDeposits = fixedDepositMapper.findByUserId(userId);
+
+        BigDecimal fixedDepositAmount = BigDecimal.ZERO;
+
+        for (FixedDeposit fd : fixedDeposits) {
+            // 状态：0=持有中，1=已到期（都应计入总额）
+            Integer status = fd.getStatus();
+            if (status != null && (status == 0 || status == 1)) {
+                BigDecimal principal = fd.getPrincipal() != null ? fd.getPrincipal() : BigDecimal.ZERO;
+                fixedDepositAmount = fixedDepositAmount.add(principal);
+            }
+        }
+
+        statistics.setFixedDepositAmount(fixedDepositAmount);
+    }
+
+    private void calculateMonthTransactionStatistics(String userId, UserStatisticsDTO statistics) {
+        UserStatisticsDTO.MonthStatistics monthStats = new UserStatisticsDTO.MonthStatistics();
+
+        // 获取当前年月
+        LocalDate now = LocalDate.now();
+        int currentYear = now.getYear();
+        int currentMonth = now.getMonthValue();
+
+        // 查询本月所有成功交易（status=1）
+        List<Transaction> transactions = transactionMapper.findByUserIdAndMonth(userId, currentYear, currentMonth);
+
+        int depositCount = 0;
+        BigDecimal depositAmount = BigDecimal.ZERO;
+        int withdrawCount = 0;
+        BigDecimal withdrawAmount = BigDecimal.ZERO;
+        BigDecimal interestAmount = BigDecimal.ZERO;
+
+        for (Transaction trans : transactions) {
+            String transType = trans.getTransType();
+            BigDecimal amount = trans.getAmount() != null ? trans.getAmount() : BigDecimal.ZERO;
+
+            // 根据数据库字段：DEPOSIT=存款，WITHDRAW=取款，INTEREST=利息
+            if ("DEPOSIT".equalsIgnoreCase(transType)) {
+                depositCount++;
+                depositAmount = depositAmount.add(amount);
+            } else if ("WITHDRAW".equalsIgnoreCase(transType)) {
+                withdrawCount++;
+                withdrawAmount = withdrawAmount.add(amount);
+            } else if ("INTEREST".equalsIgnoreCase(transType)) {
+                interestAmount = interestAmount.add(amount);
+            }
+        }
+
+        monthStats.setDepositCount(depositCount);
+        monthStats.setDepositAmount(depositAmount);
+        monthStats.setWithdrawCount(withdrawCount);
+        monthStats.setWithdrawAmount(withdrawAmount);
+        monthStats.setInterestEarned(interestAmount);
+        monthStats.setTransactionCount(transactions.size());
+
+        statistics.setThisMonth(monthStats);
+    }
 
     @Override
     @Transactional
@@ -397,5 +516,195 @@ public class UserServiceImpl implements UserService {
         log.info("用户信息更新成功: userId={}, 更新字段={}", userId, updatedFields.keySet());
 
         return result;
+    }
+
+
+    @Override
+    public Map<String, Object> getUsers(UserQueryDTO queryDTO) {
+        // 1. 验证分页参数
+        if (queryDTO.getPage() == null || queryDTO.getPage() < 1) {
+            queryDTO.setPage(1);
+        }
+        if (queryDTO.getPageSize() == null || queryDTO.getPageSize() < 1 || queryDTO.getPageSize() > 100) {
+            queryDTO.setPageSize(20);
+        }
+
+        // 2. 计算分页偏移量
+        int offset = (queryDTO.getPage() - 1) * queryDTO.getPageSize();
+
+        // 3. 查询用户列表
+        List<User> users = userMapper.findUsers(
+                queryDTO.getSearch(),
+                queryDTO.getRole(),
+                queryDTO.getAccountStatus(),
+                offset,
+                queryDTO.getPageSize()
+        );
+
+        // 4. 查询用户总数
+        int total = userMapper.countUsers(
+                queryDTO.getSearch(),
+                queryDTO.getRole(),
+                queryDTO.getAccountStatus()
+        );
+
+        // 5. 查询每个用户的银行卡统计信息
+        List<Map<String, Object>> userList = new ArrayList<>();
+        for (User user : users) {
+            Map<String, Object> userInfo = new HashMap<>();
+
+            // 用户基本信息
+            userInfo.put("userId", user.getUserId());
+            userInfo.put("username", user.getUsername());
+            userInfo.put("phone", user.getPhone());
+            userInfo.put("role", user.getRole());
+            userInfo.put("accountStatus", user.getAccountStatus());
+            userInfo.put("createdTime", user.getCreatedTime());
+            userInfo.put("lastLoginTime", user.getLastLoginTime());
+
+            // 查询用户详细信息
+            UserInfo userDetail = userInfoMapper.findByUserId(user.getUserId());
+            if (userDetail != null) {
+                userInfo.put("name", userDetail.getName());
+                userInfo.put("idNumber", maskIdNumber(userDetail.getIdNumber()));
+            }
+
+            // 查询银行卡统计
+            List<BankCard> cards = bankCardMapper.findByUserId(user.getUserId());
+            int activeCardCount = 0;
+            BigDecimal totalBalance = BigDecimal.ZERO;
+
+            for (BankCard card : cards) {
+                if (card.getStatus() == 0) {  // 正常状态的卡
+                    activeCardCount++;
+                    totalBalance = totalBalance.add(card.getBalance());
+                }
+            }
+
+            userInfo.put("cardCount", cards.size());
+            userInfo.put("activeCardCount", activeCardCount);
+            userInfo.put("totalBalance", totalBalance);
+
+            userList.add(userInfo);
+        }
+
+        // 6. 计算总页数
+        int totalPages = (int) Math.ceil((double) total / queryDTO.getPageSize());
+
+        // 7. 返回结果
+        Map<String, Object> result = new HashMap<>();
+        result.put("users", userList);
+        result.put("pagination", Map.of(
+                "page", queryDTO.getPage(),
+                "pageSize", queryDTO.getPageSize(),
+                "total", total,
+                "totalPages", totalPages
+        ));
+
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> getUserCards(String userId) {
+        Map<String, Object> result = new HashMap<>();
+
+        // 1. 验证用户是否存在
+        User user = userMapper.findByUserId(userId);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+
+        // 2. 查询用户信息
+        UserInfo userInfo = userInfoMapper.findByUserId(userId);
+
+        // 3. 查询用户的所有银行卡
+        List<BankCard> cards = bankCardMapper.findByUserId(userId);
+
+        // 4. 构建响应
+        List<Map<String, Object>> cardList = new ArrayList<>();
+        for (BankCard card : cards) {
+            Map<String, Object> cardMap = new HashMap<>();
+            cardMap.put("cardId", card.getCardId());
+            cardMap.put("balance", card.getBalance());
+            cardMap.put("availableBalance", card.getAvailableBalance());
+            cardMap.put("frozenAmount", card.getFrozenAmount());
+            cardMap.put("status", card.getStatus());
+            cardMap.put("statusText", getCardStatusText(card.getStatus()));
+            cardMap.put("cardType", card.getCardType());
+            cardMap.put("bindTime", card.getBindTime());
+            cardMap.put("lastTransactionTime", card.getLastTransactionTime());
+            cardMap.put("dailyLimit", card.getDailyLimit());
+            cardMap.put("monthlyLimit", card.getMonthlyLimit());
+
+            cardList.add(cardMap);
+        }
+
+        // 5. 返回用户信息和银行卡列表
+        result.put("user", Map.of(
+                "userId", user.getUserId(),
+                "username", user.getUsername(),
+                "name", userInfo.getName(),
+                "phone", user.getPhone(),
+                "idNumber", maskIdNumber(userInfo.getIdNumber()),
+                "accountStatus", user.getAccountStatus()
+        ));
+
+        result.put("cards", cardList);
+        result.put("total", cardList.size());
+
+        return result;
+    }
+
+
+
+    private String getCardStatusText(Integer status) {
+        switch (status) {
+            case 0: return "正常";
+            case 1: return "挂失";
+            case 2: return "冻结";
+            case 3: return "已注销";
+            default: return "未知";
+        }
+    }
+
+    @Override
+    public Integer getUserRole(String userId) {
+        User user = userMapper.findByUserId(userId);
+        return user != null ? user.getRole() : null;
+    }
+
+    @Override
+    @Transactional
+    public void resetUserPassword(String adminId, String targetUserId, String reason) {
+        // 1. 验证管理员权限（确保是管理员操作）
+        User admin = userMapper.findByUserId(adminId);
+        if (admin == null) {
+            throw new RuntimeException("管理员不存在");
+        }
+        if (admin.getRole() != 1) {
+            throw new RuntimeException("无权执行此操作");
+        }
+
+        // 2. 验证目标用户是否存在
+        User targetUser = userMapper.findByUserId(targetUserId);
+        if (targetUser == null) {
+            throw new RuntimeException("目标用户不存在");
+        }
+
+        // 3. 验证目标用户不是管理员（不能重置管理员密码）
+        if (targetUser.getRole() == 1) {
+            throw new RuntimeException("不能重置管理员的密码");
+        }
+
+        // 4. 重置密码为 "123456"（BCrypt加密）
+        String encryptedPassword = passwordUtil.encode("123456");
+        int result = userMapper.updatePassword(targetUserId, encryptedPassword);
+
+        if (result == 0) {
+            throw new RuntimeException("重置密码失败");
+        }
+
+        // 5. 记录操作日志（通过日志服务）
+        log.info("管理员 {} 重置用户 {} 的密码，原因：{}", adminId, targetUserId, reason);
     }
 }

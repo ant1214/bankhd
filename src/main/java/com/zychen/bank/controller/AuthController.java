@@ -1,8 +1,8 @@
 package com.zychen.bank.controller;
 
-import com.zychen.bank.dto.LoginDTO;
-import com.zychen.bank.dto.RegisterDTO;
+import com.zychen.bank.dto.*;
 import com.zychen.bank.model.User;
+import com.zychen.bank.service.OperationLogService;
 import com.zychen.bank.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +20,9 @@ import java.util.Map;
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
+
+    @Autowired
+    private OperationLogService operationLogService;
 
     @Autowired
     private UserService userService;
@@ -69,10 +72,33 @@ public class AuthController {
      * 用户登录
      */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginDTO loginDTO) {
+    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginDTO loginDTO, HttpServletRequest request){
         try {
             Map<String, Object> loginResult = userService.login(loginDTO);
 
+            // 获取客户端信息
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
+
+            // 从登录结果获取用户信息
+            String userId = (String) loginResult.get("userId");
+            Integer role = (Integer) loginResult.get("role");
+
+            // 记录登录成功日志
+            operationLogService.logOperation(
+                    userId,
+                    role,
+                    "AUTH",
+                    "LOGIN",
+                    "用户登录成功",
+                    "USER",
+                    userId,
+                    ipAddress,
+                    userAgent,
+                    1,
+                    null,
+                    0
+            );
             Map<String, Object> response = new HashMap<>();
             response.put("code", 200);
             response.put("message", "登录成功");
@@ -86,6 +112,25 @@ public class AuthController {
             error.put("data", null);
             return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
+            // 获取客户端信息
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
+
+            // 记录登录失败日志
+            operationLogService.logOperation(
+                    null,
+                    null,
+                    "AUTH",
+                    "LOGIN",
+                    "用户登录失败: " + e.getMessage(),
+                    "USER",
+                    null,
+                    ipAddress,
+                    userAgent,
+                    0,
+                    e.getMessage(),
+                    0
+            );
             log.error("登录失败", e);
             Map<String, Object> error = new HashMap<>();
             error.put("code", 500);
@@ -131,8 +176,11 @@ public class AuthController {
      * 验证必须是管理员角色
      */
     @PostMapping("/admin/login")
-    public ResponseEntity<Map<String, Object>> adminLogin(@Valid @RequestBody LoginDTO loginDTO) {
+    public ResponseEntity<Map<String, Object>> adminLogin(@Valid @RequestBody LoginDTO loginDTO, HttpServletRequest request){
         try {
+            // 获取客户端信息
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
             Map<String, Object> loginResult = userService.login(loginDTO);
 
             // 验证必须是管理员
@@ -153,6 +201,22 @@ public class AuthController {
             }
 
             if (role != 1) {
+                // 记录权限不足的失败日志（添加这4行）
+                operationLogService.logOperation(
+                        (String) loginResult.get("userId"),
+                        role,
+                        "AUTH",
+                        "LOGIN",
+                        "管理员登录失败：权限不足",
+                        "USER",
+                        (String) loginResult.get("userId"),
+                        ipAddress,
+                        userAgent,
+                        0,
+                        "权限不足，仅管理员可登录",
+                        0
+                );
+
                 Map<String, Object> error = new HashMap<>();
                 error.put("code", 403);
                 error.put("message", "权限不足，仅管理员可登录");
@@ -164,7 +228,21 @@ public class AuthController {
 
             // 添加管理员标识
             loginResult.put("is_admin", true);
-
+            // 记录管理员登录成功日志（添加这4行）
+            operationLogService.logOperation(
+                    (String) loginResult.get("userId"),
+                    role,
+                    "AUTH",
+                    "LOGIN",
+                    "管理员登录成功",
+                    "USER",
+                    (String) loginResult.get("userId"),
+                    ipAddress,
+                    userAgent,
+                    1,
+                    null,
+                    0
+            );
             Map<String, Object> response = new HashMap<>();
             response.put("code", 200);
             response.put("message", "管理员登录成功");
@@ -172,11 +250,112 @@ public class AuthController {
 
             return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
+            // 获取客户端信息
+            String ipAddress = request.getRemoteAddr();
+            String userAgent = request.getHeader("User-Agent");
+
+            // 记录登录失败日志（添加这4行）
+            operationLogService.logOperation(
+                    null,
+                    null,
+                    "AUTH",
+                    "LOGIN",
+                    "管理员登录失败: " + e.getMessage(),
+                    "USER",
+                    null,
+                    ipAddress,
+                    userAgent,
+                    0,
+                    e.getMessage(),
+                    0
+            );
             Map<String, Object> error = new HashMap<>();
             error.put("code", 400);
             error.put("message", e.getMessage());
             error.put("data", null);
             return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            error.put("data", null);
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+
+    /**
+     * 检查用户名是否可用
+     */
+    @PostMapping("/check-username")
+    public ResponseEntity<Map<String, Object>> checkUsername(@Valid @RequestBody CheckUsernameDTO dto) {
+        try {
+            boolean exists = userService.isUsernameExists(dto.getUsername());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", exists ? "用户名已存在" : "用户名可用");
+            response.put("data", Map.of(
+                    "username", dto.getUsername(),
+                    "available", !exists,
+                    "exists", exists
+            ));
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            error.put("data", null);
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    /**
+     * 检查手机号是否可用
+     */
+    @PostMapping("/check-phone")
+    public ResponseEntity<Map<String, Object>> checkPhone(@Valid @RequestBody CheckPhoneDTO dto) {
+        try {
+            boolean exists = userService.isPhoneExists(dto.getPhone());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", exists ? "手机号已注册" : "手机号可用");
+            response.put("data", Map.of(
+                    "phone", dto.getPhone(),
+                    "available", !exists,
+                    "exists", exists
+            ));
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            error.put("data", null);
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    /**
+     * 检查身份证号是否可用
+     */
+    @PostMapping("/check-id-number")
+    public ResponseEntity<Map<String, Object>> checkIdNumber(@Valid @RequestBody CheckIdNumberDTO dto) {
+        try {
+            boolean exists = userService.isIdNumberExists(dto.getIdNumber());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", exists ? "身份证号已注册" : "身份证号可用");
+            response.put("data", Map.of(
+                    "idNumber", dto.getIdNumber(),
+                    "available", !exists,
+                    "exists", exists
+            ));
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("code", 500);

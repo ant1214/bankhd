@@ -35,18 +35,30 @@ public class FixedDepositServiceImpl implements FixedDepositService {
 
     @Autowired
     private TransactionMapper transactionMapper;
-
+    @Autowired
+    private InterestRateService interestRateService;
     @Autowired
     private IDGenerator idGenerator;
-    // 定期存款利率表：期限(月) -> 年利率
-    private static final Map<Integer, BigDecimal> INTEREST_RATES = new HashMap<>();
-    static {
-        INTEREST_RATES.put(3, new BigDecimal("0.010"));   // 3个月，1.0%
-        INTEREST_RATES.put(6, new BigDecimal("0.013"));   // 6个月，1.3%
-        INTEREST_RATES.put(12, new BigDecimal("0.015"));  // 1年，1.5%
-        INTEREST_RATES.put(24, new BigDecimal("0.020"));  // 2年，2.0%
-        INTEREST_RATES.put(36, new BigDecimal("0.025"));  // 3年，2.5%
+    // 添加这个辅助方法
+    private boolean isValidTerm(Integer term) {
+        if (term == null) return false;
+        int[] validTerms = {3, 6, 12, 24, 36};
+        for (int validTerm : validTerms) {
+            if (term == validTerm) {
+                return true;
+            }
+        }
+        return false;
     }
+    // 定期存款利率表：期限(月) -> 年利率
+//    private static final Map<Integer, BigDecimal> INTEREST_RATES = new HashMap<>();
+//    static {
+//        INTEREST_RATES.put(3, new BigDecimal("0.010"));   // 3个月，1.0%
+//        INTEREST_RATES.put(6, new BigDecimal("0.013"));   // 6个月，1.3%
+//        INTEREST_RATES.put(12, new BigDecimal("0.015"));  // 1年，1.5%
+//        INTEREST_RATES.put(24, new BigDecimal("0.020"));  // 2年，2.0%
+//        INTEREST_RATES.put(36, new BigDecimal("0.025"));  // 3年，2.5%
+//    }
 
     @Override
     @Transactional
@@ -77,8 +89,14 @@ public class FixedDepositServiceImpl implements FixedDepositService {
             throw new RuntimeException("余额不足");
         }
 
-        // 6. 验证存款期限是否合法
-        if (!INTEREST_RATES.containsKey(dto.getTerm())) {
+//        // 6. 验证存款期限是否合法
+//        if (!INTEREST_RATES.containsKey(dto.getTerm())) {
+//            throw new RuntimeException("存款期限不合法，请选择3、6、12、24、36个月");
+//        }
+        // 6. 验证存款期限是否合法（修改这里）
+        // 原来：if (!INTEREST_RATES.containsKey(dto.getTerm()))
+        // 现在：检查是否支持的期限
+        if (!isValidTerm(dto.getTerm())) {
             throw new RuntimeException("存款期限不合法，请选择3、6、12、24、36个月");
         }
 
@@ -97,7 +115,19 @@ public class FixedDepositServiceImpl implements FixedDepositService {
             throw new RuntimeException("扣除余额失败");
         }
 
-        // 8. 创建定期存款记录
+//        // 8. 创建定期存款记录
+//        FixedDeposit fixedDeposit = new FixedDeposit();
+//        String fdNo = "FD" + new java.text.SimpleDateFormat("yyyyMMddHHmmss").format(new Date())
+//                + String.format("%04d", (int)(Math.random() * 10000));
+//        fixedDeposit.setFdNo(fdNo);
+//        fixedDeposit.setCardId(dto.getCardId());
+//        fixedDeposit.setUserId(userId);
+//        fixedDeposit.setPrincipal(dto.getPrincipal());
+//        fixedDeposit.setRate(INTEREST_RATES.get(dto.getTerm()));
+//        fixedDeposit.setTerm(dto.getTerm());
+//        fixedDeposit.setAutoRenew(dto.getAutoRenew());
+//        fixedDeposit.setStatus(0); // 进行中
+        // 8. 创建定期存款记录 - 修改利率获取方式
         FixedDeposit fixedDeposit = new FixedDeposit();
         String fdNo = "FD" + new java.text.SimpleDateFormat("yyyyMMddHHmmss").format(new Date())
                 + String.format("%04d", (int)(Math.random() * 10000));
@@ -105,7 +135,12 @@ public class FixedDepositServiceImpl implements FixedDepositService {
         fixedDeposit.setCardId(dto.getCardId());
         fixedDeposit.setUserId(userId);
         fixedDeposit.setPrincipal(dto.getPrincipal());
-        fixedDeposit.setRate(INTEREST_RATES.get(dto.getTerm()));
+
+        // 修改这里：从利率服务获取利率
+        // 原来：fixedDeposit.setRate(INTEREST_RATES.get(dto.getTerm()));
+        BigDecimal annualRate = interestRateService.getRateByTerm(dto.getTerm());
+        fixedDeposit.setRate(annualRate);
+
         fixedDeposit.setTerm(dto.getTerm());
         fixedDeposit.setAutoRenew(dto.getAutoRenew());
         fixedDeposit.setStatus(0); // 进行中
@@ -205,9 +240,13 @@ public class FixedDepositServiceImpl implements FixedDepositService {
 
         // 7. 计算利息（活期利率）
         // 活期年利率：0.35%，日利率：0.35%/365
-        BigDecimal currentAnnualRate = new BigDecimal("0.0035");
+//        BigDecimal currentAnnualRate = new BigDecimal("0.0035");
+//        BigDecimal dailyRate = currentAnnualRate.divide(new BigDecimal("365"), 8, BigDecimal.ROUND_HALF_UP);
+// 7. 计算利息（活期利率）- 修改这里
+        // 原来：BigDecimal currentAnnualRate = new BigDecimal("0.0035");
+        // 现在：从利率服务获取活期利率
+        BigDecimal currentAnnualRate = interestRateService.getCurrentRate();
         BigDecimal dailyRate = currentAnnualRate.divide(new BigDecimal("365"), 8, BigDecimal.ROUND_HALF_UP);
-
         BigDecimal principal = fixedDeposit.getPrincipal();
         BigDecimal interest = principal.multiply(dailyRate)
                 .multiply(new BigDecimal(heldDays))

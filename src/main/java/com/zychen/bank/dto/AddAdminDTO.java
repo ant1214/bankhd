@@ -8,7 +8,7 @@ public class AddAdminDTO {
     @NotNull(message = "手机号不能为空")
     private String phone;
 
-    @NotNull(message = "账号不能为空")
+    @NotNull(message = "昵称不能为空")
     private String username;
 
     @NotNull(message = "密码不能为空")
