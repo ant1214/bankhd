@@ -88,6 +88,9 @@ public class FixedDepositServiceImpl implements FixedDepositService {
         if (bankCard.getBalance().compareTo(dto.getPrincipal()) < 0) {
             throw new RuntimeException("余额不足");
         }
+        // 获取当前余额（扣除前）
+        BigDecimal currentBalance = bankCard.getBalance();
+        BigDecimal currentAvailableBalance = bankCard.getAvailableBalance();
 
 //        // 6. 验证存款期限是否合法
 //        if (!INTEREST_RATES.containsKey(dto.getTerm())) {
@@ -127,6 +130,26 @@ public class FixedDepositServiceImpl implements FixedDepositService {
 //        fixedDeposit.setTerm(dto.getTerm());
 //        fixedDeposit.setAutoRenew(dto.getAutoRenew());
 //        fixedDeposit.setStatus(0); // 进行中
+        // ✅ 8. 记录定期存款存入交易（新增代码）
+        Transaction depositTransaction = new Transaction();
+        depositTransaction.setTransNo(idGenerator.generateTransNo());
+        depositTransaction.setCardId(dto.getCardId());
+        depositTransaction.setUserId(userId);
+        depositTransaction.setTransType("TRANSFER");
+        depositTransaction.setTransSubtype("FIXED_DEPOSIT_IN");
+        depositTransaction.setAmount(dto.getPrincipal().negate()); // 负值表示转出
+        depositTransaction.setBalanceBefore(currentBalance);
+        depositTransaction.setBalanceAfter(newBalance);
+        depositTransaction.setFee(BigDecimal.ZERO);
+        depositTransaction.setCurrency("CNY");
+        depositTransaction.setStatus(1);
+        depositTransaction.setRemark("定期存款存入");
+        depositTransaction.setOperatorId(userId);
+        depositTransaction.setOperatorType("USER");
+        depositTransaction.setTransTime(java.time.LocalDateTime.now());
+        depositTransaction.setCompletedTime(java.time.LocalDateTime.now());
+
+        transactionMapper.insert(depositTransaction);
         // 8. 创建定期存款记录 - 修改利率获取方式
         FixedDeposit fixedDeposit = new FixedDeposit();
         String fdNo = "FD" + new java.text.SimpleDateFormat("yyyyMMddHHmmss").format(new Date())

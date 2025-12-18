@@ -100,18 +100,34 @@ public class FixedDepositController {
                 // 忽略
             }
 
+            // ✅ 关键：不要将异常信息放到 operation_detail 中
+            // 只放简单的描述
+            String operationDetail = "创建定期存款失败";
+
+            // ✅ 只截取第一行异常信息（不要包含堆栈跟踪）
+            String errorMsg = e.getMessage();
+            if (errorMsg != null) {
+                // 只取第一行，去掉堆栈跟踪
+                String[] lines = errorMsg.split("\n");
+                errorMsg = lines[0].trim();
+                // 截断到195字符
+                if (errorMsg.length() > 195) {
+                    errorMsg = errorMsg.substring(0, 195) + "...";
+                }
+            }
+
             operationLogService.logOperation(
                     userId,
                     userId != null ? getUserRoleSafely(userId) : null,
                     "FIXED_DEPOSIT",
                     "CREATE_FD",
-                    "创建定期存款失败：" + e.getMessage() + "，金额：" + dto.getPrincipal() + "元，卡号：" + dto.getCardId(),
+                    operationDetail,  // ✅ 简单描述
                     "CARD",
                     dto.getCardId(),
                     ipAddress,
                     userAgent,
                     0,
-                    e.getMessage(),
+                    errorMsg,  // ✅ 只放简洁的错误信息
                     0
             );
             // ============ 日志结束 ============

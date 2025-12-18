@@ -1019,34 +1019,71 @@ public class PdfExportService {
         return currentY;
     }
 
+//    /**
+//     * 添加页脚（带页码）
+//     */
+//    private void addPageFooter(PDPageContentStream contentStream,
+//                               ReportResponseDTO report,
+//                               int currentPage,
+//                               int totalPages,
+//                               float currentY) throws IOException {
+//        float footerY = MARGIN - 20;
+//
+//        // 左侧：系统信息
+//        contentStream.beginText();
+//        contentStream.setFont(chineseNormalFont, SMALL_FONT_SIZE);
+//        contentStream.newLineAtOffset(MARGIN, footerY);
+//        safeShowText(contentStream, "银行管理系统 - 账单报告");
+//        contentStream.endText();
+//
+//        // 中间：免责声明
+//        String disclaimer = "本报告仅供参考，具体以银行系统为准";
+//        float disclaimerWidth = chineseNormalFont.getStringWidth(disclaimer) / 1000 * SMALL_FONT_SIZE;
+//        contentStream.beginText();
+//        contentStream.setFont(chineseNormalFont, SMALL_FONT_SIZE);
+//        contentStream.newLineAtOffset((PAGE_SIZE.getWidth() - disclaimerWidth) / 2, footerY);
+//        safeShowText(contentStream, disclaimer);
+//        contentStream.endText();
+//
+//        // 右侧：页码和生成时间
+//        String pageInfo = String.format("第 %d/%d 页 | 生成时间: %s",
+//                currentPage, totalPages, DATE_FORMAT.format(new Date()));
+//        float pageInfoWidth = chineseNormalFont.getStringWidth(pageInfo) / 1000 * SMALL_FONT_SIZE;
+//        contentStream.beginText();
+//        contentStream.setFont(chineseNormalFont, SMALL_FONT_SIZE);
+//        contentStream.newLineAtOffset(PAGE_SIZE.getWidth() - MARGIN - pageInfoWidth, footerY);
+//        safeShowText(contentStream, pageInfo);
+//        contentStream.endText();
+//    }
     /**
-     * 添加页脚（带页码）
+     * 添加页脚（分三列显示）- 更美观的版本
      */
     private void addPageFooter(PDPageContentStream contentStream,
                                ReportResponseDTO report,
                                int currentPage,
                                int totalPages,
                                float currentY) throws IOException {
-        float footerY = MARGIN - 20;
+        float footerY = MARGIN - 25; // 稍微降低位置，给更多空间
+        float columnSpacing = (PAGE_SIZE.getWidth() - 2 * MARGIN) / 3; // 三等分
 
-        // 左侧：系统信息
+        // 第一列：系统信息（居左）
         contentStream.beginText();
         contentStream.setFont(chineseNormalFont, SMALL_FONT_SIZE);
         contentStream.newLineAtOffset(MARGIN, footerY);
         safeShowText(contentStream, "银行管理系统 - 账单报告");
         contentStream.endText();
 
-        // 中间：免责声明
+        // 第二列：免责声明（居中）
         String disclaimer = "本报告仅供参考，具体以银行系统为准";
         float disclaimerWidth = chineseNormalFont.getStringWidth(disclaimer) / 1000 * SMALL_FONT_SIZE;
         contentStream.beginText();
         contentStream.setFont(chineseNormalFont, SMALL_FONT_SIZE);
-        contentStream.newLineAtOffset((PAGE_SIZE.getWidth() - disclaimerWidth) / 2, footerY);
+        contentStream.newLineAtOffset(MARGIN + columnSpacing + (columnSpacing - disclaimerWidth) / 2, footerY);
         safeShowText(contentStream, disclaimer);
         contentStream.endText();
 
-        // 右侧：页码和生成时间
-        String pageInfo = String.format("第 %d/%d 页 | 生成时间: %s",
+        // 第三列：页码和时间（居右）
+        String pageInfo = String.format("第 %d/%d 页 | %s",
                 currentPage, totalPages, DATE_FORMAT.format(new Date()));
         float pageInfoWidth = chineseNormalFont.getStringWidth(pageInfo) / 1000 * SMALL_FONT_SIZE;
         contentStream.beginText();
