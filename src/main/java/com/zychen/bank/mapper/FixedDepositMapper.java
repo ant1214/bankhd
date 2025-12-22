@@ -3,6 +3,7 @@ package com.zychen.bank.mapper;
 import com.zychen.bank.model.FixedDeposit;
 import org.apache.ibatis.annotations.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Mapper
@@ -49,5 +50,10 @@ public interface FixedDepositMapper {
     int updateStatus(@Param("fdId") Integer fdId, @Param("status") Integer status);
 
 
+    @Select("SELECT COUNT(*) FROM fixed_deposit WHERE status = #{status}")
+    Long countByStatus(@Param("status") Integer status);
+
+    @Select("SELECT IFNULL(SUM(principal), 0) FROM fixed_deposit WHERE status IN (0, 1)")
+    BigDecimal getTotalFixedDepositAmount();
 
 }

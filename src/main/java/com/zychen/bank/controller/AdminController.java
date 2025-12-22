@@ -1,11 +1,9 @@
 package com.zychen.bank.controller;
 
-import com.zychen.bank.dto.AddAdminDTO;
-import com.zychen.bank.dto.OperationLogQueryDTO;
-import com.zychen.bank.dto.ResetUserPasswordDTO;
-import com.zychen.bank.dto.UserQueryDTO;
+import com.zychen.bank.dto.*;
 import com.zychen.bank.model.User;
 import com.zychen.bank.service.OperationLogService;
+import com.zychen.bank.service.TransactionService;
 import com.zychen.bank.service.UserService;
 import com.zychen.bank.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,6 +31,13 @@ public class AdminController {
 
     @Autowired
     private OperationLogService operationLogService;
+
+    // 添加工具方法
+    private String truncateErrorMessage(String errorMsg, int maxLength) {
+        if (errorMsg == null) return null;
+        if (errorMsg.length() <= maxLength) return errorMsg;
+        return errorMsg.substring(0, maxLength - 3) + "...";
+    }
 
     /**
      * 管理员添加新管理员
@@ -109,7 +115,7 @@ public class AdminController {
             // ============ 添加失败日志 ============
             String ipAddress = request.getRemoteAddr();
             String userAgent = request.getHeader("User-Agent");
-
+            String safeErrorMsg = truncateErrorMessage(e.getMessage(), 200);
             // 获取操作者信息
             String currentUserId = null;
             Integer currentUserRole = null;
@@ -126,13 +132,13 @@ public class AdminController {
                     currentUserRole,
                     "USER",
                     "ADD_ADMIN",
-                    "添加新管理员失败：" + e.getMessage() + "，尝试添加的用户名：" + addAdminDTO.getUsername(),
+                    "添加新管理员失败：" + "，尝试添加的用户名：" + addAdminDTO.getUsername(),
                     "USER",
                     null,
                     ipAddress,
                     userAgent,
                     0,
-                    e.getMessage(),
+                    safeErrorMsg,
                     0
             );
             // ============ 日志结束 ============
@@ -360,6 +366,7 @@ public class AdminController {
             log.error("重置用户密码失败", e);
 
             // 记录失败日志
+            String safeErrorMsg = truncateErrorMessage(e.getMessage(), 200);
             try {
                 String token = request.getHeader("Authorization").substring(7);
                 String adminId = jwtUtil.getUserIdFromToken(token);
@@ -369,13 +376,13 @@ public class AdminController {
                         1,
                         "ADMIN",
                         "RESET_USER_PASSWORD",
-                        "重置用户密码失败：" + e.getMessage(),
+                        "重置用户密码失败：" ,
                         "USER",
                         dto != null ? dto.getTargetUserId() : null,
                         request.getRemoteAddr(),
                         request.getHeader("User-Agent"),
                         0,
-                        e.getMessage(),
+                        safeErrorMsg,
                         0
                 );
             } catch (Exception logEx) {
@@ -386,6 +393,236 @@ public class AdminController {
             error.put("code", 400);
             error.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+
+
+    @GetMapping("/dashboard/stats")
+    public ResponseEntity<?> getDashboardStats(HttpServletRequest request) {
+        try {
+            log.info("收到仪表盘统计请求");
+
+            // 验证管理员权限
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("code", 401);
+                error.put("message", "未授权访问");
+                return ResponseEntity.status(401).body(error);
+            }
+
+            String token = authHeader.substring(7);
+            Integer currentUserRole = jwtUtil.getRoleFromToken(token);
+
+            if (currentUserRole == null || currentUserRole != 1) {
+                log.warn("权限不足，用户角色: {}", currentUserRole);
+                Map<String, Object> error = new HashMap<>();
+                error.put("code", 403);
+                error.put("message", "权限不足，仅管理员可查看");
+                return ResponseEntity.status(403).body(error);
+            }
+
+            // 获取统计数据
+            Map<String, Object> stats = userService.getDashboardStats();
+
+            // 检查是否有错误标记
+            if (stats.containsKey("error") && (Boolean) stats.get("error")) {
+                throw new RuntimeException((String) stats.get("message"));
+            }
+
+            log.info("成功获取统计数据");
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "获取成功");
+            response.put("data", stats);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("获取仪表盘统计失败", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "获取统计数据失败: " + e.getMessage());
+            // 返回更详细的错误信息用于调试
+            error.put("debug", e.getClass().getName() + ": " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    /**
+     * 管理员查询所有银行卡（分页+筛选）
+     * GET /admin/cards
+     */
+    @GetMapping("/cards")
+    public ResponseEntity<?> getAllCards(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer pageSize,
+            HttpServletRequest request) {
+        try {
+            // 验证管理员权限
+            String token = request.getHeader("Authorization").substring(7);
+            Integer currentUserRole = jwtUtil.getRoleFromToken(token);
+
+            if (currentUserRole != 1) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("code", 403);
+                error.put("message", "权限不足，仅管理员可查询");
+                error.put("data", null);
+                return ResponseEntity.status(403).body(error);
+            }
+
+            // 调用Service查询所有银行卡
+            Map<String, Object> result = userService.getAllCards(search, status, page, pageSize);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "查询成功");
+            response.put("data", result);
+
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 400);
+            error.put("message", e.getMessage());
+            error.put("data", null);
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            log.error("查询所有银行卡失败", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            error.put("data", null);
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    // 在AdminController.java中添加以下方法
+
+    @Autowired
+    private TransactionService transactionService;  // 需要注入TransactionService
+
+    /**
+     * 管理员查询所有交易记录
+     * GET /admin/transactions
+     */
+    @GetMapping("/transactions")
+    public ResponseEntity<?> getAdminTransactions(
+            @ModelAttribute AdminTransactionQueryDTO queryDTO,
+            HttpServletRequest request) {
+        try {
+            log.info("查询交易记录参数: {}", queryDTO);
+
+            // 验证管理员权限
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("code", 401);
+                error.put("message", "未授权访问");
+                return ResponseEntity.status(401).body(error);
+            }
+
+            String token = authHeader.substring(7);
+            Integer currentUserRole = jwtUtil.getRoleFromToken(token);
+
+            if (currentUserRole == null || currentUserRole != 1) {
+                log.warn("权限不足，用户角色: {}", currentUserRole);
+                Map<String, Object> error = new HashMap<>();
+                error.put("code", 403);
+                error.put("message", "权限不足，仅管理员可查询");
+                return ResponseEntity.status(403).body(error);
+            }
+
+            // 调用Service查询交易记录
+            Map<String, Object> result = transactionService.getAdminTransactions(queryDTO);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "查询成功");
+            response.put("data", result);
+
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            log.error("查询交易记录失败", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 400);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            log.error("查询交易记录异常", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    /**
+     * 获取交易概览统计（为前端图表提供数据）
+     * GET /admin/transactions/overview
+     */
+    @GetMapping("/transactions/overview")
+    public ResponseEntity<?> getTransactionOverview(
+            @RequestParam(required = false) String dateRange,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            HttpServletRequest request) {
+        try {
+            // 验证管理员权限
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("code", 401);
+                error.put("message", "未授权访问");
+                return ResponseEntity.status(401).body(error);
+            }
+
+            String token = authHeader.substring(7);
+            Integer currentUserRole = jwtUtil.getRoleFromToken(token);
+
+            if (currentUserRole == null || currentUserRole != 1) {
+                log.warn("权限不足，用户角色: {}", currentUserRole);
+                Map<String, Object> error = new HashMap<>();
+                error.put("code", 403);
+                error.put("message", "权限不足，仅管理员可查看");
+                return ResponseEntity.status(403).body(error);
+            }
+
+            // 解析日期参数
+            LocalDate parsedStartDate = null;
+            LocalDate parsedEndDate = null;
+
+            if (startDate != null && !startDate.isEmpty()) {
+                parsedStartDate = LocalDate.parse(startDate);
+            }
+            if (endDate != null && !endDate.isEmpty()) {
+                parsedEndDate = LocalDate.parse(endDate);
+            }
+
+            // 调用Service获取概览数据
+            Map<String, Object> overviewData = transactionService.getTransactionOverview(
+                    dateRange, parsedStartDate, parsedEndDate);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("code", 200);
+            response.put("message", "获取成功");
+            response.put("data", overviewData);
+
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            log.error("获取交易概览失败", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 400);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            log.error("获取交易概览异常", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("code", 500);
+            error.put("message", "系统内部错误");
+            return ResponseEntity.internalServerError().body(error);
         }
     }
 }

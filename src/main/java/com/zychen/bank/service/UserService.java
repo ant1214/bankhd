@@ -69,4 +69,20 @@ public interface UserService {
      */
     void resetUserPassword(String adminId, String targetUserId, String reason);
 
+
+    /**
+     * 获取仪表盘统计信息
+     * @return 仪表盘统计数据
+     */
+    Map<String, Object> getDashboardStats();
+
+    /**
+     * 管理员查询所有银行卡
+     * @param search 搜索关键字（卡号/用户名/姓名）
+     * @param status 状态筛选
+     * @param page 页码
+     * @param pageSize 每页数量
+     * @return 分页的银行卡列表
+     */
+    Map<String, Object> getAllCards(String search, String status, Integer page, Integer pageSize);
 }

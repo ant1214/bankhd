@@ -1,10 +1,12 @@
 package com.zychen.bank.service;
 
+import com.zychen.bank.dto.AdminTransactionQueryDTO;
 import com.zychen.bank.dto.DepositDTO;
 import com.zychen.bank.dto.TransactionQueryDTO;
 import com.zychen.bank.dto.WithdrawDTO;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Map;
 
 public interface TransactionService {
@@ -20,4 +22,14 @@ public interface TransactionService {
 
     // 查询交易记录
     Map<String, Object> getTransactions(String userId, TransactionQueryDTO queryDTO);
+
+    /**
+     * 管理员查询所有交易记录
+     */
+    Map<String, Object> getAdminTransactions(AdminTransactionQueryDTO queryDTO);
+
+    /**
+     * 获取交易概览统计
+     */
+    Map<String, Object> getTransactionOverview(String dateRange, LocalDate startDate, LocalDate endDate);
 }

@@ -26,11 +26,27 @@ public class AuthController {
 
     @Autowired
     private UserService userService;
-    // 在AuthController类中添加这个方法
+
     @GetMapping("/ping")
     public ResponseEntity<String> ping() {
         return ResponseEntity.ok("pong");
     }
+
+    // ============ 工具方法：安全截断错误信息 ============
+    private String truncateErrorMessage(String errorMsg, int maxLength) {
+        if (errorMsg == null) return null;
+        if (errorMsg.length() <= maxLength) return errorMsg;
+        return errorMsg.substring(0, maxLength - 3) + "...";
+    }
+
+    private String getSafeErrorMessage(Exception e) {
+        if (e == null || e.getMessage() == null) return "未知错误";
+        String[] lines = e.getMessage().split("\n");
+        String firstLine = lines[0].trim();
+        return truncateErrorMessage(firstLine, 200);
+    }
+
+
     /**
      * 用户注册
      */
@@ -115,20 +131,20 @@ public class AuthController {
             // 获取客户端信息
             String ipAddress = request.getRemoteAddr();
             String userAgent = request.getHeader("User-Agent");
-
+            String safeErrorMsg = getSafeErrorMessage(e);
             // 记录登录失败日志
             operationLogService.logOperation(
                     null,
                     null,
                     "AUTH",
                     "LOGIN",
-                    "用户登录失败: " + e.getMessage(),
+                    "用户登录失败: ",
                     "USER",
                     null,
                     ipAddress,
                     userAgent,
                     0,
-                    e.getMessage(),
+                    safeErrorMsg,
                     0
             );
             log.error("登录失败", e);
@@ -253,20 +269,20 @@ public class AuthController {
             // 获取客户端信息
             String ipAddress = request.getRemoteAddr();
             String userAgent = request.getHeader("User-Agent");
-
+            String safeErrorMsg = getSafeErrorMessage(e);
             // 记录登录失败日志（添加这4行）
             operationLogService.logOperation(
                     null,
                     null,
                     "AUTH",
                     "LOGIN",
-                    "管理员登录失败: " + e.getMessage(),
+                    "管理员登录失败: " ,
                     "USER",
                     null,
                     ipAddress,
                     userAgent,
                     0,
-                    e.getMessage(),
+                    safeErrorMsg,
                     0
             );
             Map<String, Object> error = new HashMap<>();

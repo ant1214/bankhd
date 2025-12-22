@@ -34,6 +34,13 @@ public class BankCardController {
     private BankCardService bankCardService;
     @Autowired
     private BankCardMapper bankCardMapper;
+
+    // 安全截断错误信息
+    private String truncateErrorMessage(String errorMsg, int maxLength) {
+        if (errorMsg == null) return null;
+        if (errorMsg.length() <= maxLength) return errorMsg;
+        return errorMsg.substring(0, maxLength - 3) + "...";
+    }
     /**
      * 绑定银行卡
      */
@@ -113,13 +120,13 @@ public class BankCardController {
                     null,
                     "CARD",
                     "BIND_CARD",
-                    "绑定银行卡失败：" + e.getMessage() + "，卡号：" + bindCardDTO.getCardId(),
+                    "绑定银行卡失败：" +"，卡号：" + bindCardDTO.getCardId(),
                     "CARD",
                     bindCardDTO.getCardId(),
                     ipAddress,
                     userAgent,
                     0,  // 失败
-                    e.getMessage(),
+                    truncateErrorMessage(e.getMessage(), 200),
                     0
             );
             // ============ 日志结束 ============
@@ -395,13 +402,13 @@ public class BankCardController {
                     userRole,
                     "CARD",
                     "UNBIND_CARD",
-                    "解绑银行卡失败：" + e.getMessage() + "，卡号：" + cardId,
+                    "解绑银行卡失败：" +"，卡号：" + cardId,
                     "CARD",
                     cardId,
                     ipAddress,
                     userAgent,
                     0,
-                    e.getMessage(),
+                    truncateErrorMessage(e.getMessage(), 200),
                     0
             );
             // ============ 日志结束 ============

@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface UserMapper {
@@ -80,4 +81,28 @@ public interface UserMapper {
     @Update("UPDATE user SET account_status = #{status} WHERE user_id = #{userId}")
     int updateAccountStatus(@Param("userId") String userId, @Param("status") Integer status);
 
+
+    @Select("SELECT COUNT(*) FROM user")
+    Long countTotalUsers();
+
+    @Select("SELECT COUNT(*) FROM user WHERE account_status = 0")
+    Long countActiveUsers();
+
+    @Select("SELECT COUNT(*) FROM user WHERE account_status = 1")
+    Long countFrozenUsers();
+
+    @Select("SELECT COUNT(*) FROM user WHERE DATE(created_time) = CURDATE()")
+    Long countNewUsersToday();
+
+    @Select("SELECT " +
+            "u.user_id as userId, " +
+            "u.username, " +
+            "ui.name, " +
+            "u.phone, " +
+            "u.created_time as createdTime, " +
+            "u.account_status as accountStatus " +
+            "FROM user u " +
+            "LEFT JOIN user_info ui ON u.user_id = ui.user_id " +
+            "ORDER BY u.created_time DESC LIMIT #{limit}")
+    List<Map<String, Object>> getRecentUsers(@Param("limit") int limit);
 }

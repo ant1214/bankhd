@@ -5,6 +5,8 @@ import org.apache.ibatis.annotations.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface BankCardMapper {
@@ -40,4 +42,53 @@ public interface BankCardMapper {
 
     @Update("UPDATE bank_card SET status = #{status} WHERE card_id = #{cardId}")
     int updateStatus(@Param("cardId") String cardId, @Param("status") Integer status);
+
+
+    @Select("SELECT COUNT(*) FROM bank_card")
+    Long countTotalCards();
+
+    @Select("SELECT COUNT(*) FROM bank_card WHERE status = #{status}")
+    Long countCardsByStatus(@Param("status") Integer status);
+
+    @Select("SELECT IFNULL(SUM(balance), 0) FROM bank_card WHERE status = 0")
+    BigDecimal getTotalBalance();
+
+
+    // 查询所有银行卡（带分页和筛选）
+    @Select("<script>" +
+            "SELECT bc.*, u.username as user_name, ui.name " +
+            "FROM bank_card bc " +
+            "LEFT JOIN user u ON bc.user_id = u.user_id " +
+            "LEFT JOIN user_info ui ON bc.user_id = ui.user_id " +
+            "WHERE 1=1 " +
+            "<if test='search != null and search != \"\"'>" +
+            "  AND (bc.card_id LIKE CONCAT('%', #{search}, '%') OR u.username LIKE CONCAT('%', #{search}, '%') OR ui.name LIKE CONCAT('%', #{search}, '%'))" +
+            "</if>" +
+            "<if test='status != null'>" +
+            "  AND bc.status = #{status}" +
+            "</if>" +
+            "ORDER BY bc.bind_time DESC " +
+            "LIMIT #{offset}, #{pageSize}" +
+            "</script>")
+    List<Map<String, Object>> findAllCards(
+            @Param("search") String search,
+            @Param("status") Integer status,
+            @Param("offset") Integer offset,
+            @Param("pageSize") Integer pageSize);
+
+    // 统计所有银行卡数量（带筛选）
+    @Select("<script>" +
+            "SELECT COUNT(*) " +
+            "FROM bank_card bc " +
+            "LEFT JOIN user u ON bc.user_id = u.user_id " +
+            "LEFT JOIN user_info ui ON bc.user_id = ui.user_id " +
+            "WHERE 1=1 " +
+            "<if test='search != null and search != \"\"'>" +
+            "  AND (bc.card_id LIKE CONCAT('%', #{search}, '%') OR u.username LIKE CONCAT('%', #{search}, '%') OR ui.name LIKE CONCAT('%', #{search}, '%'))" +
+            "</if>" +
+            "<if test='status != null'>" +
+            "  AND bc.status = #{status}" +
+            "</if>" +
+            "</script>")
+    int countAllCards(@Param("search") String search, @Param("status") Integer status);
 }

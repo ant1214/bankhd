@@ -178,26 +178,33 @@ public class ReportController {
                 log.warn("获取用户角色失败: {}", userId, e);
                 userRole = 0; // 默认普通用户
             }
-
+// ✅ 新增：安全截断
+            String safeDetail = truncateErrorMessage(detail, 200);
+            String safeErrorMsg = truncateErrorMessage(errorMessage, 200);
             operationLogService.logOperation(
                     userId,
                     userRole,
                     "REPORT",
                     operation,
-                    detail,
+                    safeDetail,
                     "USER",
                     userId,
                     ipAddress,
                     userAgent,
                     status,
-                    errorMessage,
+                    safeErrorMsg,
                     0
             );
         } catch (Exception e) {
             log.error("记录操作日志失败", e);
         }
     }
-
+    // 安全截断错误信息
+    private String truncateErrorMessage(String errorMsg, int maxLength) {
+        if (errorMsg == null) return null;
+        if (errorMsg.length() <= maxLength) return errorMsg;
+        return errorMsg.substring(0, maxLength - 3) + "...";
+    }
     // 需要注入的依赖
     @Autowired
     private JwtUtil jwtUtil;

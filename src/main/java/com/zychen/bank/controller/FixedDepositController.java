@@ -33,6 +33,13 @@ public class FixedDepositController {
     @Autowired
     private UserService userService;
 
+    // 安全截断错误信息
+    private String truncateErrorMessage(String errorMsg, int maxLength) {
+        if (errorMsg == null) return null;
+        if (errorMsg.length() <= maxLength) return errorMsg;
+        return errorMsg.substring(0, maxLength - 3) + "...";
+    }
+
     /**
      * 安全获取用户角色，避免异常影响主流程
      */
@@ -279,13 +286,13 @@ public class FixedDepositController {
                     userId != null ? getUserRoleSafely(userId) : null,
                     "FIXED_DEPOSIT",
                     "EARLY_WITHDRAW_FD",
-                    "提前支取定期存款失败：" + e.getMessage() + "，存单ID：" + fdId,
+                    "提前支取定期存款失败：" +  "，存单ID：" + fdId,
                     "FIXED_DEPOSIT",
                     String.valueOf(fdId),
                     ipAddress,
                     userAgent,
                     0,
-                    e.getMessage(),
+                    truncateErrorMessage(e.getMessage(), 200),
                     0
             );
             // ============ 日志结束 ============
@@ -357,13 +364,13 @@ public class FixedDepositController {
                     userId != null ? getUserRoleSafely(userId) : null,
                     "FIXED_DEPOSIT",
                     "MATURE_FD",
-                    "到期转出定期存款失败：" + e.getMessage() + "，存单ID：" + fdId,
+                    "到期转出定期存款失败：" + "，存单ID：" + fdId,
                     "FIXED_DEPOSIT",
                     String.valueOf(fdId),
                     ipAddress,
                     userAgent,
                     0,
-                    e.getMessage(),
+                    truncateErrorMessage(e.getMessage(), 200),
                     0
             );
             // ============ 日志结束 ============

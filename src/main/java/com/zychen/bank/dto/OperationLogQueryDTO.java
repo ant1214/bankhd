@@ -11,5 +11,5 @@ public class OperationLogQueryDTO {
     private String startTime;     // 开始时间 yyyy-MM-dd（可选）
     private String endTime;       // 结束时间 yyyy-MM-dd（可选）
     private Integer page = 1;     // 页码
-    private Integer pageSize = 50;// 每页大小
+    private Integer pageSize = 10;// 每页大小
 }

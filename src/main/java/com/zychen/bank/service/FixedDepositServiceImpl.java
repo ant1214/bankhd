@@ -301,7 +301,7 @@ public class FixedDepositServiceImpl implements FixedDepositService {
         transaction.setTransNo(idGenerator.generateTransNo());
         transaction.setCardId(fixedDeposit.getCardId());
         transaction.setUserId(userId);
-        transaction.setTransType("WITHDRAW");
+        transaction.setTransType("DEPOSIT");
         transaction.setTransSubtype("FIXED_DEPOSIT_EARLY");
         transaction.setAmount(totalAmount);
         transaction.setBalanceBefore(bankCard.getBalance());
@@ -416,7 +416,7 @@ public class FixedDepositServiceImpl implements FixedDepositService {
         transaction.setTransNo(transNo);
         transaction.setCardId(fixedDeposit.getCardId());
         transaction.setUserId(userId);
-        transaction.setTransType("WITHDRAW");
+        transaction.setTransType("DEPOSIT");
         transaction.setTransSubtype("FIXED_DEPOSIT_MATURE");
         transaction.setAmount(totalAmount);
         transaction.setBalanceBefore(bankCard.getBalance());
